@@ -54,6 +54,7 @@ public class ConditionalShapeSegmentation {
 	
 	// more things to tune? small & variable structures seem to vanish a bit fast
 	private boolean scalePriors = true;
+	private boolean shiftPriors = false;
 	
 	private final float INF = 1e9f;
 	
@@ -691,10 +692,13 @@ public class ConditionalShapeSegmentation {
                 sigma2 *= sigma2;
                 // when scaling by the variance, it penalizes more strongly variable regions -> they get a weaker prior
                 // maybe a good thing? not entirely sure...
-                if (scalePriors)
-                    priors[obj1][obj2] = 1.0/FastMath.sqrt(2.0*FastMath.PI*sigma2)*FastMath.exp( -0.5*mean*mean/sigma2 );
+                if (shiftPriors)
+                    priors[obj1][obj2] = FastMath.exp( -0.5*Numerics.square(Numerics.max(0.0,mean-var))/sigma2 );
                 else
                     priors[obj1][obj2] = FastMath.exp( -0.5*mean*mean/sigma2 );
+                
+                if (scalePriors)
+                    priors[obj1][obj2] = 1.0/FastMath.sqrt(2.0*FastMath.PI*sigma2)*priors[obj1][obj2];
  			}
             for (int best=0;best<nbest;best++) {
                 int best1=0;
