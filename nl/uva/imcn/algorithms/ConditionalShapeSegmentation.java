@@ -355,6 +355,47 @@ public class ConditionalShapeSegmentation {
             rx = rax; ry = ray; rz = raz;
         }
 	}
+	public final void setSkeletonAtlasProbasAndLabels(float[] pval, int[] lval) {
+	    // first estimate ndata
+	    ndata = 0;
+	    System.out.println("atlas size: "+nax+" x "+nay+" x "+naz+" ("+naxyz+")");
+	    
+	    if (map2target!=null) {
+	        System.out.println("image size: "+ntx+" x "+nty+" x "+ntz+" ("+ntxyz+")");
+            System.out.println("work region size: "+ndata);
+            // pass the probabilities USING the idmap
+            skeletonProbas = new float[nbest/4][ndata];
+            skeletonLabels = new int[nbest/4][ndata];
+            for (int xt=0;xt<ntx;xt++) for (int yt=0;yt<nty;yt++) for (int zt=0;zt<ntz;zt++) {
+                int idx = xt + ntx*yt + ntx*nty*zt;
+                if (mask[idx]) {
+                    int xa = Numerics.bounded(Numerics.round(map2target[idx+0*ntxyz]),0,nax-1);
+                    int ya = Numerics.bounded(Numerics.round(map2target[idx+1*ntxyz]),0,nay-1);
+                    int za = Numerics.bounded(Numerics.round(map2target[idx+2*ntxyz]),0,naz-1);
+                    //int xyz =       Numerics.bounded(Numerics.round(map2target[idx+0*ntxyz]),0,nx-1)
+                    //        +    nx*Numerics.bounded(Numerics.round(map2target[idx+1*ntxyz]),0,ny-1)
+                    //        + nx*ny*Numerics.bounded(Numerics.round(map2target[idx+2*ntxyz]),0,nz-1);
+                    int xyz = xa + nax*ya + nax*nay*za;
+
+                    for (int best=0;best<nbest/4;best++) {
+                        skeletonProbas[best][idmap[idx]] = pval[xyz+best*naxyz];
+                        skeletonLabels[best][idmap[idx]] = lval[xyz+best*naxyz];
+                    }
+                }
+            }
+	    } else {
+            System.out.println("work region size: "+ndata);
+            // pass the probabilities USING the idmap
+            skeletonProbas = new float[nbest/4][ndata];
+            skeletonLabels = new int[nbest/4][ndata];
+            for (int xyz=0;xyz<naxyz;xyz++) if (mask[xyz]) {
+                for (int best=0;best<nbest/4;best++) {
+                    skeletonProbas[best][idmap[xyz]] = pval[xyz+best*naxyz];
+                    skeletonLabels[best][idmap[xyz]] = lval[xyz+best*naxyz];
+                }
+            }
+        }
+	}
 	public final void setConditionalMeanAndStdv(float[] mean, float[] stdv) {
 	    condmean = new double[nc][nobj][nobj];
 	    condstdv = new double[nc][nobj][nobj];
@@ -825,7 +866,7 @@ public class ConditionalShapeSegmentation {
                     skeletonLabels[best][idmap[xyz]] = 101*(best1+1);
                     skeletonProbas[best][idmap[xyz]] = (float)priors[best1];
                 } else {
-                    for (int b=best;b<nbest;b++) {
+                    for (int b=best;b<nbest/4;b++) {
                         skeletonLabels[b][idmap[xyz]] = 0;
                         skeletonProbas[b][idmap[xyz]] = 0.0f;
                     }
@@ -843,7 +884,7 @@ public class ConditionalShapeSegmentation {
             for (id=0;id<ndata;id++) val[id] = skeletonProbas[0][id];
             float skelMax = (float)measure.evaluate(val, top);
             System.out.println("top "+top+"% skeleton probability: "+skelMax);
-            for (id=0;id<ndata;id++) for (int best=0;best<nbest;best++) {
+            for (id=0;id<ndata;id++) for (int best=0;best<nbest/4;best++) {
                 skeletonProbas[best][id] = (float)Numerics.min(top/100.0*skeletonProbas[best][id]/skelMax, 1.0f);
             }		
 		}
@@ -1244,6 +1285,7 @@ public class ConditionalShapeSegmentation {
                                best = nbest;
                            }
                        }
+                       // use the skeleton as prior? not here, it's not used to restrict search space
                    }
                    if (likelihood[obj1][obj2]>0) {
                        if (condpair[c][obj1][obj2]) {
@@ -1369,6 +1411,18 @@ public class ConditionalShapeSegmentation {
                         posteriors[obj1][obj2] = spatialProbas[best][idmap[xyz]];
                         best = nbest;
                     }
+                }
+                // use the skeleton as prior?
+                if (obj1==obj2) {
+                   for (int best=0;best<nbest/4;best++) {
+                       if (skeletonLabels[best][idmap[xyz]]==101*(obj1+1)) {
+                           // multiply nc times to balance prior and posterior
+                           //likelihood[obj1][obj2] = 1.0;
+                           if (skeletonProbas[best][idmap[xyz]]>posteriors[obj1][obj1])
+                               posteriors[obj1][obj1] = skeletonProbas[best][idmap[xyz]];
+                           best = nbest/4;
+                       }
+                   }
                 }
                 if (posteriors[obj1][obj2]>0) {
                     double intensPrior = 0.0;
@@ -2939,6 +2993,14 @@ public class ConditionalShapeSegmentation {
                             if (b==0) score = combinedProbas[0][id]-combinedProbas[nextbest[obj][id]][id];
                             else score = combinedProbas[b][id]-combinedProbas[0][id];
                             //score = combinedProbas[b][idmap[xyz]];
+                            float factor = 0.0f;
+                            for (int s=0;s<nbest/4;s++) {
+                                if (skeletonLabels[s][id]==101*(obj+1)) {
+                                    factor = skeletonProbas[s][id];
+                                    s = nbest/4;
+                                }
+                            }
+                            score *= factor;
                             if (score>bestscore[obj]) {
                                 bestscore[obj] = score;
                                 start[obj] = xyz;
@@ -2958,7 +3020,16 @@ public class ConditionalShapeSegmentation {
                     if (labels[idmap[ngb]]==0) {
                         for (int best=0;best<nbest;best++) {
                             if (combinedLabels[best][idmap[ngb]]>100*(obj+1) && combinedLabels[best][idmap[ngb]]<100*(obj+2)) {
-                                heap.addValue(combinedProbas[best][idmap[ngb]]-combinedProbas[Numerics.max(0,nextbest[obj][idmap[ngb]])][idmap[ngb]],ngb,combinedLabels[best][idmap[ngb]]);
+                                float score = combinedProbas[best][idmap[ngb]]-combinedProbas[Numerics.max(0,nextbest[obj][idmap[ngb]])][idmap[ngb]];
+                                float factor = 0.0f;
+                                for (int s=0;s<nbest/4;s++) {
+                                    if (skeletonLabels[s][idmap[ngb]]==101*(obj+1)) {
+                                        factor = skeletonProbas[s][idmap[ngb]];
+                                        s = nbest/4;
+                                    }
+                                }
+                                score *= factor;
+                                heap.addValue(score,ngb,combinedLabels[best][idmap[ngb]]);
                                 best=nbest;
                             }
                         }
@@ -3020,10 +3091,18 @@ public class ConditionalShapeSegmentation {
                                 if (labels[idmap[ngb]]==0) {
                                     for (int best=0;best<nbest;best++) {
                                         if (combinedLabels[best][idmap[ngb]]>100*(obj+1) && combinedLabels[best][idmap[ngb]]<100*(obj+2)) {
-                                            heap.addValue(combinedProbas[best][idmap[ngb]]-combinedProbas[Numerics.max(0,nextbest[obj][idmap[ngb]])][idmap[ngb]],ngb,combinedLabels[best][idmap[ngb]]);
+                                            float newscore = combinedProbas[best][idmap[ngb]]-combinedProbas[Numerics.max(0,nextbest[obj][idmap[ngb]])][idmap[ngb]];
+                                            float factor = 0.0f;
+                                            for (int s=0;s<nbest/4;s++) {
+                                                if (skeletonLabels[s][idmap[ngb]]==101*(obj+1)) {
+                                                    factor = skeletonProbas[s][idmap[ngb]];
+                                                    s = nbest/4;
+                                                }
+                                            }
+                                            newscore *= factor;
+                                            heap.addValue(newscore,ngb,combinedLabels[best][idmap[ngb]]);
                                             best=nbest;
-                                        }
-                                        
+                                        }                                        
                                     }
                                 }
                             }
@@ -3051,7 +3130,16 @@ public class ConditionalShapeSegmentation {
                     if (labels[idmap[ngb]]==0) {
                         for (int best=0;best<nbest;best++) {
                             if (combinedLabels[best][idmap[ngb]]>100*(obj+1) && combinedLabels[best][idmap[ngb]]<100*(obj+2)) {
-                                heap.addValue(combinedProbas[best][idmap[ngb]]-combinedProbas[Numerics.max(0,nextbest[obj][idmap[ngb]])][idmap[ngb]],ngb,combinedLabels[best][idmap[ngb]]);
+                                float score = combinedProbas[best][idmap[ngb]]-combinedProbas[Numerics.max(0,nextbest[obj][idmap[ngb]])][idmap[ngb]];
+                                float factor = 0.0f;
+                                for (int s=0;s<nbest/4;s++) {
+                                    if (skeletonLabels[s][idmap[ngb]]==101*(obj+1)) {
+                                        factor = skeletonProbas[s][idmap[ngb]];
+                                        s = nbest/4;
+                                    }
+                                }
+                                score *= factor;
+                                heap.addValue(score,ngb,combinedLabels[best][idmap[ngb]]);
                                 best=nbest;
                             }
                         }
@@ -3080,7 +3168,16 @@ public class ConditionalShapeSegmentation {
                                 if (labels[idmap[ngb]]==0) {
                                     for (int best=0;best<nbest;best++) {
                                         if (combinedLabels[best][idmap[ngb]]>100*(obj+1) && combinedLabels[best][idmap[ngb]]<100*(obj+2)) {
-                                            heap.addValue(combinedProbas[best][idmap[ngb]]-combinedProbas[Numerics.max(0,nextbest[obj][idmap[ngb]])][idmap[ngb]],ngb,combinedLabels[best][idmap[ngb]]);
+                                            float newscore = combinedProbas[best][idmap[ngb]]-combinedProbas[Numerics.max(0,nextbest[obj][idmap[ngb]])][idmap[ngb]];
+                                            float factor = 0.0f;
+                                            for (int s=0;s<nbest/4;s++) {
+                                                if (skeletonLabels[s][idmap[ngb]]==101*(obj+1)) {
+                                                    factor = skeletonProbas[s][idmap[ngb]];
+                                                    s = nbest/4;
+                                                }
+                                            }
+                                            newscore *= factor;
+                                            heap.addValue(newscore,ngb,combinedLabels[best][idmap[ngb]]);
                                             best=nbest;
                                         }
 
