@@ -17,6 +17,7 @@ public class ConditionalShapeSegmentation {
 
 	// data buffers
 	private float[][][] lvlImages;
+	private float[][][] sklImages;
 	private float[][][] intensImages;
 	private float[][] mapImages = null;
 	
@@ -75,6 +76,9 @@ public class ConditionalShapeSegmentation {
 	private int[][]        spatialLabels;
 	private float[][]      spatialProbas;
 	
+	private int[][]        skeletonLabels;
+	private float[][]      skeletonProbas;
+	
 	private int[][]        intensityLabels;
 	private float[][]      intensityProbas;
 	
@@ -122,10 +126,14 @@ public class ConditionalShapeSegmentation {
 	    nobj = obj;
 	    nc = cnt;
 	    lvlImages = new float[nsub][nobj][];
+	    sklImages = new float[nsub][nobj][];
 	    intensImages = new float[nsub][nc][];
 	    targetImages = new float[nc][];
 	}
 	public final void setLevelsetImageAt(int sub, int obj, float[] val) { lvlImages[sub][obj] = val; 
+	    //System.out.println("levelset ("+sub+", "+obj+") = "+lvlImages[sub][obj][Numerics.floor(nx/2+nx*ny/2+nx*ny*nz/2)]);
+	}
+	public final void setSkeletonImageAt(int sub, int obj, float[] val) { sklImages[sub][obj] = val; 
 	    //System.out.println("levelset ("+sub+", "+obj+") = "+lvlImages[sub][obj][Numerics.floor(nx/2+nx*ny/2+nx*ny*nz/2)]);
 	}
 	public final void setContrastImageAt(int sub, int cnt, float[] val) { intensImages[sub][cnt] = val; 
@@ -457,6 +465,27 @@ public class ConditionalShapeSegmentation {
         return images;
 	}
 
+	public final float[] getBestSkeletonProbabilityMaps(int nval) {
+	    nval = Numerics.min(nval,nbest);
+        float[] images = new float[nval*nxyz];
+		for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
+		    for (int best=0;best<nval;best++) {
+                images[xyz+best*nxyz] = skeletonProbas[best][idmap[xyz]];
+            }
+        }
+        return images;
+	}
+	public final int[] getBestSkeletonProbabilityLabels(int nval) {
+        nval = Numerics.min(nval,nbest);
+        int[] images = new int[nval*nxyz];
+		for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
+		    for (int best=0;best<nval;best++) {
+                images[xyz+best*nxyz] = skeletonLabels[best][idmap[xyz]];
+            }
+        }
+        return images;
+	}
+
 	public final float[] getBestIntensityProbabilityMaps(int nval) {
         nval = Numerics.min(nval,nbest);
         float[] images = new float[nval*nxyz];
@@ -741,6 +770,81 @@ public class ConditionalShapeSegmentation {
             System.out.println("top "+top+"% shape probability: "+shapeMax);
             for (id=0;id<ndata;id++) for (int best=0;best<nbest;best++) {
                 spatialProbas[best][id] = (float)Numerics.min(top/100.0*spatialProbas[best][id]/shapeMax, 1.0f);
+            }		
+		}
+		
+		System.out.println("compute skeleton priors");
+
+		skeletonProbas = new float[nbest/4][ndata]; 
+		skeletonLabels = new int[nbest/4][ndata];
+		stdsum=0; 
+		stdden=0;
+		for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
+		    double[] priors = new double[nobj];
+            for (int obj=1;obj<nobj;obj++) {
+                //priors[obj1][obj2] = FastMath.exp( -0.5*med*med/(1.349*iqr*1.349*iqr) );
+                // alternative idea: use a combination of mean and stdev as distance basis
+                // -> take into account uncertainty better
+                double mean = 0.0;
+                for (int sub=0;sub<nsub;sub++) {
+                    mean += Numerics.max(0.0, sklImages[sub][obj-1][xyz]);
+                }
+                mean /= nsub;
+                double var = 0.0;
+                for (int sub=0;sub<nsub;sub++) {
+                    var += Numerics.square(mean-Numerics.max(0.0, sklImages[sub][obj-1][xyz]));
+                }
+                var = FastMath.sqrt(var/nsub);
+                
+                stdsum += var;
+                stdden ++;
+                
+                double sigma2 = var+Numerics.max(deltaOut, deltaIn, 1.0);
+                sigma2 *= sigma2;
+                // when scaling by the variance, it penalizes more strongly variable regions -> they get a weaker prior
+                // maybe a good thing? not entirely sure...
+                if (shiftPriors)
+                    priors[obj] = FastMath.exp( -0.5*Numerics.square(Numerics.max(0.0,mean-var))/sigma2 );
+                else
+                    priors[obj] = FastMath.exp( -0.5*mean*mean/sigma2 );
+                
+                if (scalePriors)
+                    priors[obj] = 1.0/FastMath.sqrt(2.0*FastMath.PI*sigma2)*priors[obj];
+ 			}
+            for (int best=0;best<nbest/4;best++) {
+                int best1=0;
+					
+                for (int obj=1;obj<nobj;obj++) {
+                    if (priors[obj]>priors[best1]) {
+						best1 = obj;
+					}
+				}
+				// check if best is zero: give null label in that case
+				if (priors[best1]>0) {
+                    // sub optimal labeling, but easy to read
+                    skeletonLabels[best][idmap[xyz]] = 101*(best1+1);
+                    skeletonProbas[best][idmap[xyz]] = (float)priors[best1];
+                } else {
+                    for (int b=best;b<nbest;b++) {
+                        skeletonLabels[b][idmap[xyz]] = 0;
+                        skeletonProbas[b][idmap[xyz]] = 0.0f;
+                    }
+                    best = nbest;
+                }                    
+                // remove best value
+                priors[best1] = 0.0;
+ 		    }
+		}
+		
+		// rescale top % in each shape and intensity priors
+		if (rescaleProbas){
+            Percentile measure = new Percentile();
+            val = new double[ndata];
+            for (id=0;id<ndata;id++) val[id] = skeletonProbas[0][id];
+            float skelMax = (float)measure.evaluate(val, top);
+            System.out.println("top "+top+"% skeleton probability: "+skelMax);
+            for (id=0;id<ndata;id++) for (int best=0;best<nbest;best++) {
+                skeletonProbas[best][id] = (float)Numerics.min(top/100.0*skeletonProbas[best][id]/skelMax, 1.0f);
             }		
 		}
 		
