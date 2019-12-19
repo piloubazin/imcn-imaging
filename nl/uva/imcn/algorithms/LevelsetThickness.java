@@ -97,7 +97,7 @@ public class LevelsetThickness {
 		}
 		
 		// compute the gradient norm
-		float[] medial = new float[nxyz];
+		medialImage = new float[nxyz];
 		for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
 		    int xyz = x+nx*y+nx*ny*z;
 		    if (levelset[xyz]<=0) {
@@ -106,42 +106,39 @@ public class LevelsetThickness {
                 grad += 0.25*(levelset[xyz+nx]-levelset[xyz-nx])*(levelset[xyz+nx]-levelset[xyz-nx]);
                 grad += 0.25*(levelset[xyz+nx*ny]-levelset[xyz-nx*ny])*(levelset[xyz+nx*ny]-levelset[xyz-nx*ny]);
                 
-                medial[xyz] = 1.0f - (float)grad;
+                medialImage[xyz] = (float)Numerics.max(0.0, 1.0-FastMath.sqrt(grad));
             } else {
-                medial[xyz] = 0.0f;
+                medialImage[xyz] = 0.0f;
             }
         }
-        medialImage = medial;
-        
+         
 		// use to build a distance function
-        float[] dist = new float[nxyz];
+        distImage = new float[nxyz];
         for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
             int xyz = x+nx*y+nx*ny*z;
-            if (medial[xyz]>=0.5f && (medial[xyz+1]<0.5f || medial[xyz-1]<0.5f
-                                       || medial[xyz+nx]<0.5f || medial[xyz-nx]<0.5f
-                                       || medial[xyz+nx*ny]<0.5f || medial[xyz-nx*ny]<0.5f)) 
-                dist[xyz] = 0.5f-medial[xyz];
-            else if (medial[xyz]<0.5f && (medial[xyz+1]>=0.5f || medial[xyz-1]>=0.5f
-                                           || medial[xyz+nx]>=0.5f || medial[xyz-nx]>=0.5f
-                                           || medial[xyz+nx*ny]>=0.5f || medial[xyz-nx*ny]>=0.5f))
-                dist[xyz] = 0.5f-medial[xyz];
-            else if (medial[xyz]>=0.5f) dist[xyz] = -1.0f;
-            else dist[xyz] = +1.0f;
+            if (medialImage[xyz]>=0.5f && (medialImage[xyz+1]<0.5f || medialImage[xyz-1]<0.5f
+                                       || medialImage[xyz+nx]<0.5f || medialImage[xyz-nx]<0.5f
+                                       || medialImage[xyz+nx*ny]<0.5f || medialImage[xyz-nx*ny]<0.5f)) 
+                distImage[xyz] = 0.5f-medialImage[xyz];
+            else if (medialImage[xyz]<0.5f && (medialImage[xyz+1]>=0.5f || medialImage[xyz-1]>=0.5f
+                                           || medialImage[xyz+nx]>=0.5f || medialImage[xyz-nx]>=0.5f
+                                           || medialImage[xyz+nx*ny]>=0.5f || medialImage[xyz-nx*ny]>=0.5f))
+                distImage[xyz] = 0.5f-medialImage[xyz];
+            else if (medialImage[xyz]>=0.5f) distImage[xyz] = -1.0f;
+            else distImage[xyz] = +1.0f;
         }
-        InflateGdm gdm = new InflateGdm(dist, nx, ny, nz, rx, ry, rz, mask, 0.4f, 0.4f, "no", null);
+        InflateGdm gdm = new InflateGdm(distImage, nx, ny, nz, rx, ry, rz, mask, 0.4f, 0.4f, "no", null);
         gdm.evolveNarrowBand(0, 1.0f);
-        dist = gdm.getLevelSet();
-        distImage = dist;
-		
+        distImage = gdm.getLevelSet();
+
 		// add distances to get thickness
-		float[] thickness = new float[nxyz];
+		thickImage = new float[nxyz];
         for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
             int xyz = x+nx*y+nx*ny*z;
             if (levelset[xyz]<=0) {
-                thickness[xyz] = levelset[xyz]+dist[xyz];
+                thickImage[xyz] = distImage[xyz]-levelset[xyz];
             }
         }
-        thickImage = thickness;
 	}
 
 }
