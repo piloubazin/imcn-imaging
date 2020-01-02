@@ -1509,8 +1509,8 @@ public class ConditionalShapeSegmentation {
                            // multiply nc times to balance prior and posterior
                            //likelihood[obj1][obj2] = 1.0;
                            if (skeletonProbas[best][idmap[xyz]]>posteriors[obj1][obj1]*posteriors[obj1][obj1])
-                               //posteriors[obj1][obj1] = FastMath.sqrt(skeletonProbas[best][idmap[xyz]]);
-                               posteriors[obj1][obj1] = skeletonProbas[best][idmap[xyz]]/Numerics.max(0.001f,posteriors[obj1][obj1]);
+                               posteriors[obj1][obj1] = FastMath.sqrt(skeletonProbas[best][idmap[xyz]]);
+                               //posteriors[obj1][obj1] = skeletonProbas[best][idmap[xyz]]/Numerics.max(0.001f,posteriors[obj1][obj1]);
                            best = nskel;
                        }
                    }
@@ -3012,6 +3012,7 @@ public class ConditionalShapeSegmentation {
             double logvolmean = (1.0-pvol)*logVolMean[obj]+pvol*FastMath.log(Numerics.max(1.0,voldata[obj]));
             double logvolstdv = FastMath.sqrt( (1.0-pvol)*( Numerics.square(logVolStdv[obj]) )
                                 + pvol*Numerics.square(logVolMean[obj]-FastMath.log(Numerics.max(1.0,voldata[obj]))) );
+            /* makes the result either the measured or prior volume
             for (int t=0;t<20;t++) {
                 System.out.print(".");
                 double prev = pvol;
@@ -3020,8 +3021,8 @@ public class ConditionalShapeSegmentation {
                 logvolstdv = FastMath.sqrt( (1.0-pvol)*( Numerics.square(logVolStdv[obj]) )
                                 + pvol*Numerics.square(logVolMean[obj]-FastMath.log(Numerics.max(1.0,voldata[obj]))) );
                 if (Numerics.abs(pvol-prev)<0.01) t=100;
-            }
-            System.out.print("\nLabel "+obj+": atlas volume = "+FastMath.exp(logVolMean[obj])+" ["+FastMath.exp(logVolMean[obj]-spread*logVolStdv[obj])+", "+FastMath.exp(logVolMean[obj]+spread*logVolStdv[obj])+"]");
+            }*/
+            System.out.print("Label "+obj+": atlas volume = "+FastMath.exp(logVolMean[obj])+" ["+FastMath.exp(logVolMean[obj]-spread*logVolStdv[obj])+", "+FastMath.exp(logVolMean[obj]+spread*logVolStdv[obj])+"]");
             System.out.print(", data volume: "+voldata[obj]+" -> posterior volume = "+FastMath.exp(logvolmean)+" ["+FastMath.exp(logvolmean-spread*logvolstdv)+", "+FastMath.exp(logvolmean+spread*logvolstdv)+"]\n");
             logVolMean[obj] = (float)logvolmean;
             logVolStdv[obj] = (float)logvolstdv;
