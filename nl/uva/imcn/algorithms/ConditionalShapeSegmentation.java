@@ -32,6 +32,7 @@ public class ConditionalShapeSegmentation {
 	private int nobj;
 	private int nc;
 	private int nbest = 16;
+	private int nskel = 4;
 	
 	private float deltaIn = 1.0f; // this parameter might have a big effect
 	private float deltaOut = 0.0f;
@@ -58,6 +59,8 @@ public class ConditionalShapeSegmentation {
 	private boolean shiftPriors = false;
 	
 	private final float INF = 1e9f;
+	private final float ISQRT2 = (float)(1.0/FastMath.sqrt(2.0));
+	private final float ISQRT3 = (float)(1.0/FastMath.sqrt(2.0));
 	
 	private final int connectivity = 26;
 	
@@ -322,7 +325,6 @@ public class ConditionalShapeSegmentation {
             // reset all indices to subject space
             nx = ntx; ny = nty; nz = ntz; nxyz = ntxyz;
             rx = rtx; ry = rty; rz = rtz;
-            map2target = null;
             map2atlas = null;
 	    } else {
             mask = new boolean[naxyz]; 
@@ -357,15 +359,14 @@ public class ConditionalShapeSegmentation {
 	}
 	public final void setSkeletonAtlasProbasAndLabels(float[] pval, int[] lval) {
 	    // first estimate ndata
-	    ndata = 0;
 	    System.out.println("atlas size: "+nax+" x "+nay+" x "+naz+" ("+naxyz+")");
 	    
 	    if (map2target!=null) {
 	        System.out.println("image size: "+ntx+" x "+nty+" x "+ntz+" ("+ntxyz+")");
             System.out.println("work region size: "+ndata);
             // pass the probabilities USING the idmap
-            skeletonProbas = new float[nbest/4][ndata];
-            skeletonLabels = new int[nbest/4][ndata];
+            skeletonProbas = new float[nskel][ndata];
+            skeletonLabels = new int[nskel][ndata];
             for (int xt=0;xt<ntx;xt++) for (int yt=0;yt<nty;yt++) for (int zt=0;zt<ntz;zt++) {
                 int idx = xt + ntx*yt + ntx*nty*zt;
                 if (mask[idx]) {
@@ -377,7 +378,7 @@ public class ConditionalShapeSegmentation {
                     //        + nx*ny*Numerics.bounded(Numerics.round(map2target[idx+2*ntxyz]),0,nz-1);
                     int xyz = xa + nax*ya + nax*nay*za;
 
-                    for (int best=0;best<nbest/4;best++) {
+                    for (int best=0;best<nskel;best++) {
                         skeletonProbas[best][idmap[idx]] = pval[xyz+best*naxyz];
                         skeletonLabels[best][idmap[idx]] = lval[xyz+best*naxyz];
                     }
@@ -386,10 +387,10 @@ public class ConditionalShapeSegmentation {
 	    } else {
             System.out.println("work region size: "+ndata);
             // pass the probabilities USING the idmap
-            skeletonProbas = new float[nbest/4][ndata];
-            skeletonLabels = new int[nbest/4][ndata];
+            skeletonProbas = new float[nskel][ndata];
+            skeletonLabels = new int[nskel][ndata];
             for (int xyz=0;xyz<naxyz;xyz++) if (mask[xyz]) {
-                for (int best=0;best<nbest/4;best++) {
+                for (int best=0;best<nskel;best++) {
                     skeletonProbas[best][idmap[xyz]] = pval[xyz+best*naxyz];
                     skeletonLabels[best][idmap[xyz]] = lval[xyz+best*naxyz];
                 }
@@ -660,7 +661,7 @@ public class ConditionalShapeSegmentation {
 	    collapseConditionalMaps();
     }	    
 	    
-	public final void computeAtlasPriors() {
+	public final float computeAtlasPriors() {
 	    nx = nax; ny = nay; nz = naz; nxyz = naxyz;
 	    rx = rax; ry = ray; rz = raz;
 	    
@@ -804,11 +805,12 @@ public class ConditionalShapeSegmentation {
 		//levelsets = null;
 		
 		// rescale top % in each shape and intensity priors
+		float shapeMax = 1.0f;
 		if (rescaleProbas){
             Percentile measure = new Percentile();
             val = new double[ndata];
             for (id=0;id<ndata;id++) val[id] = spatialProbas[0][id];
-            float shapeMax = (float)measure.evaluate(val, top);
+            shapeMax = (float)measure.evaluate(val, top);
             System.out.println("top "+top+"% shape probability: "+shapeMax);
             for (id=0;id<ndata;id++) for (int best=0;best<nbest;best++) {
                 spatialProbas[best][id] = (float)Numerics.min(top/100.0*spatialProbas[best][id]/shapeMax, 1.0f);
@@ -1129,14 +1131,16 @@ public class ConditionalShapeSegmentation {
 		lvlImages = null;
 		intensImages = null;
 		System.out.println("\ndone");
+		
+		return shapeMax;
 	}
 	
-	public final void computeSkeletonPriors() {
+	public final void computeSkeletonPriors(float scale) {
 	    
 		System.out.println("compute skeleton priors");
 
-		skeletonProbas = new float[nbest/4][ndata]; 
-		skeletonLabels = new int[nbest/4][ndata];
+		skeletonProbas = new float[nskel][ndata]; 
+		skeletonLabels = new int[nskel][ndata];
 		double stdsum=0,stdden=0;
 		for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
 		    double[] priors = new double[nobj];
@@ -1170,7 +1174,7 @@ public class ConditionalShapeSegmentation {
                 if (scalePriors)
                     priors[obj] = 1.0/FastMath.sqrt(2.0*FastMath.PI*sigma2)*priors[obj];
  			}
-            for (int best=0;best<nbest/4;best++) {
+            for (int best=0;best<nskel;best++) {
                 int best1=0;
 					
                 for (int obj=1;obj<nobj;obj++) {
@@ -1184,7 +1188,7 @@ public class ConditionalShapeSegmentation {
                     skeletonLabels[best][idmap[xyz]] = 101*(best1+1);
                     skeletonProbas[best][idmap[xyz]] = (float)priors[best1];
                 } else {
-                    for (int b=best;b<nbest/4;b++) {
+                    for (int b=best;b<nskel;b++) {
                         skeletonLabels[b][idmap[xyz]] = 0;
                         skeletonProbas[b][idmap[xyz]] = 0.0f;
                     }
@@ -1197,13 +1201,93 @@ public class ConditionalShapeSegmentation {
 		
 		// rescale top % in each shape and intensity priors
 		if (rescaleProbas){
-            Percentile measure = new Percentile();
-            double[] val = new double[ndata];
-            for (int id=0;id<ndata;id++) val[id] = skeletonProbas[0][id];
-            float skelMax = (float)measure.evaluate(val, top);
-            System.out.println("top "+top+"% skeleton probability: "+skelMax);
-            for (int id=0;id<ndata;id++) for (int best=0;best<nbest/4;best++) {
-                skeletonProbas[best][id] = (float)Numerics.min(top/100.0*skeletonProbas[best][id]/skelMax, 1.0f);
+            //Percentile measure = new Percentile();
+            //double[] val = new double[ndata];
+            //for (int id=0;id<ndata;id++) val[id] = skeletonProbas[0][id];
+            //float skelMax = (float)measure.evaluate(val, top);
+            //System.out.println("top "+top+"% skeleton probability: "+skelMax);
+            System.out.println("rescale with shape probability scale: "+scale);
+            for (int id=0;id<ndata;id++) for (int best=0;best<nskel;best++) {
+                skeletonProbas[best][id] = (float)Numerics.min(top/100.0*skeletonProbas[best][id]/scale, 1.0f);
+            }		
+		}
+		sklImages = null;
+	}
+
+	public final void computeSkeletonTensors(float scale) {
+	    
+		System.out.println("compute skeleton tensors");
+
+		skeletonProbas = new float[nskel][ndata]; 
+		skeletonLabels = new int[nskel][ndata];
+		double stdsum=0,stdden=0;
+		for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
+		    double[] priors = new double[nobj];
+            for (int obj=1;obj<nobj;obj++) {
+                //priors[obj1][obj2] = FastMath.exp( -0.5*med*med/(1.349*iqr*1.349*iqr) );
+                // alternative idea: use a combination of mean and stdev as distance basis
+                // -> take into account uncertainty better
+                double mean = 0.0;
+                for (int sub=0;sub<nsub;sub++) {
+                    mean += Numerics.max(0.0, sklImages[sub][obj-1][xyz]);
+                }
+                mean /= nsub;
+                double var = 0.0;
+                for (int sub=0;sub<nsub;sub++) {
+                    var += Numerics.square(mean-Numerics.max(0.0, sklImages[sub][obj-1][xyz]));
+                }
+                var = FastMath.sqrt(var/nsub);
+                
+                stdsum += var;
+                stdden ++;
+                
+                double sigma2 = var+Numerics.max(deltaOut, deltaIn, 1.0);
+                sigma2 *= sigma2;
+                // when scaling by the variance, it penalizes more strongly variable regions -> they get a weaker prior
+                // maybe a good thing? not entirely sure...
+                if (shiftPriors)
+                    priors[obj] = FastMath.exp( -0.5*Numerics.square(Numerics.max(0.0,mean-var))/sigma2 );
+                else
+                    priors[obj] = FastMath.exp( -0.5*mean*mean/sigma2 );
+                
+                if (scalePriors)
+                    priors[obj] = 1.0/FastMath.sqrt(2.0*FastMath.PI*sigma2)*priors[obj];
+ 			}
+            for (int best=0;best<nskel;best++) {
+                int best1=0;
+					
+                for (int obj=1;obj<nobj;obj++) {
+                    if (priors[obj]>priors[best1]) {
+						best1 = obj;
+					}
+				}
+				// check if best is zero: give null label in that case
+				if (priors[best1]>0) {
+                    // sub optimal labeling, but easy to read
+                    skeletonLabels[best][idmap[xyz]] = 101*(best1+1);
+                    skeletonProbas[best][idmap[xyz]] = (float)priors[best1];
+                } else {
+                    for (int b=best;b<nskel;b++) {
+                        skeletonLabels[b][idmap[xyz]] = 0;
+                        skeletonProbas[b][idmap[xyz]] = 0.0f;
+                    }
+                    best = nbest;
+                }                    
+                // remove best value
+                priors[best1] = 0.0;
+ 		    }
+		}
+		
+		// rescale top % in each shape and intensity priors
+		if (rescaleProbas){
+            //Percentile measure = new Percentile();
+            //double[] val = new double[ndata];
+            //for (int id=0;id<ndata;id++) val[id] = skeletonProbas[0][id];
+            //float skelMax = (float)measure.evaluate(val, top);
+            //System.out.println("top "+top+"% skeleton probability: "+skelMax);
+            System.out.println("rescale with shape probability scale: "+scale);
+            for (int id=0;id<ndata;id++) for (int best=0;best<nskel;best++) {
+                skeletonProbas[best][id] = (float)Numerics.min(top/100.0*skeletonProbas[best][id]/scale, 1.0f);
             }		
 		}
 		sklImages = null;
@@ -1420,13 +1504,14 @@ public class ConditionalShapeSegmentation {
                 }
                 // use the skeleton as prior?
                 if (obj1==obj2) {
-                   for (int best=0;best<nbest/4;best++) {
+                   for (int best=0;best<nskel;best++) {
                        if (skeletonLabels[best][idmap[xyz]]==101*(obj1+1)) {
                            // multiply nc times to balance prior and posterior
                            //likelihood[obj1][obj2] = 1.0;
-                           if (skeletonProbas[best][idmap[xyz]]>posteriors[obj1][obj1])
-                               posteriors[obj1][obj1] = skeletonProbas[best][idmap[xyz]];
-                           best = nbest/4;
+                           if (skeletonProbas[best][idmap[xyz]]>posteriors[obj1][obj1]*posteriors[obj1][obj1])
+                               posteriors[obj1][obj1] = FastMath.sqrt(skeletonProbas[best][idmap[xyz]]);
+                               //posteriors[obj1][obj1] = skeletonProbas[best][idmap[xyz]]/Numerics.max(0.001f,posteriors[obj1][obj1]);
+                           best = nskel;
                        }
                    }
                 }
@@ -2918,11 +3003,25 @@ public class ConditionalShapeSegmentation {
                 devdiff[obj] /= (nbound[obj]-1.0);
             }
         }
+        // not needed? yes needed
         // Posterior volumes:
+        System.out.println("posterior volumes: ");
         for (int obj=1;obj<nobj;obj++) {
-            double logvolmean = 0.5*logVolMean[obj]+0.5*FastMath.log(Numerics.max(1.0,voldata[obj]));
-            double logvolstdv = FastMath.sqrt( 0.5*( Numerics.square(logVolStdv[obj])
-                                + 0.5*Numerics.square(logVolMean[obj]-FastMath.log(Numerics.max(1.0,voldata[obj]))) ) );
+            //double pvol = 0.5;
+            double pvol = FastMath.exp( -0.5*Numerics.square((FastMath.log(Numerics.max(1.0,voldata[obj]))-logVolMean[obj])/logVolStdv[obj]));
+            double logvolmean = (1.0-pvol)*logVolMean[obj]+pvol*FastMath.log(Numerics.max(1.0,voldata[obj]));
+            double logvolstdv = FastMath.sqrt( (1.0-pvol)*( Numerics.square(logVolStdv[obj]) )
+                                + pvol*Numerics.square(logVolMean[obj]-FastMath.log(Numerics.max(1.0,voldata[obj]))) );
+            /* makes the result either the measured or prior volume
+            for (int t=0;t<20;t++) {
+                System.out.print(".");
+                double prev = pvol;
+                pvol = FastMath.exp( -0.5*Numerics.square((FastMath.log(Numerics.max(1.0,voldata[obj]))-logvolmean)/logvolstdv));
+                logvolmean = (1.0-pvol)*logVolMean[obj]+pvol*FastMath.log(Numerics.max(1.0,voldata[obj]));
+                logvolstdv = FastMath.sqrt( (1.0-pvol)*( Numerics.square(logVolStdv[obj]) )
+                                + pvol*Numerics.square(logVolMean[obj]-FastMath.log(Numerics.max(1.0,voldata[obj]))) );
+                if (Numerics.abs(pvol-prev)<0.01) t=100;
+            }*/
             System.out.print("Label "+obj+": atlas volume = "+FastMath.exp(logVolMean[obj])+" ["+FastMath.exp(logVolMean[obj]-spread*logVolStdv[obj])+", "+FastMath.exp(logVolMean[obj]+spread*logVolStdv[obj])+"]");
             System.out.print(", data volume: "+voldata[obj]+" -> posterior volume = "+FastMath.exp(logvolmean)+" ["+FastMath.exp(logvolmean-spread*logvolstdv)+", "+FastMath.exp(logvolmean+spread*logvolstdv)+"]\n");
             logVolMean[obj] = (float)logvolmean;
@@ -2998,15 +3097,6 @@ public class ConditionalShapeSegmentation {
                             float score;
                             if (b==0) score = combinedProbas[0][id]-combinedProbas[nextbest[obj][id]][id];
                             else score = combinedProbas[b][id]-combinedProbas[0][id];
-                            //score = combinedProbas[b][idmap[xyz]];
-                            float factor = 0.0f;
-                            for (int s=0;s<nbest/4;s++) {
-                                if (skeletonLabels[s][id]==101*(obj+1)) {
-                                    factor = skeletonProbas[s][id];
-                                    s = nbest/4;
-                                }
-                            }
-                            score *= factor;
                             if (score>bestscore[obj]) {
                                 bestscore[obj] = score;
                                 start[obj] = xyz;
@@ -3027,14 +3117,16 @@ public class ConditionalShapeSegmentation {
                         for (int best=0;best<nbest;best++) {
                             if (combinedLabels[best][idmap[ngb]]>100*(obj+1) && combinedLabels[best][idmap[ngb]]<100*(obj+2)) {
                                 float score = combinedProbas[best][idmap[ngb]]-combinedProbas[Numerics.max(0,nextbest[obj][idmap[ngb]])][idmap[ngb]];
-                                float factor = 0.0f;
-                                for (int s=0;s<nbest/4;s++) {
+                                float offset = 0.0f;
+                                for (int s=0;s<nskel;s++) {
                                     if (skeletonLabels[s][idmap[ngb]]==101*(obj+1)) {
-                                        factor = skeletonProbas[s][idmap[ngb]];
-                                        s = nbest/4;
+                                        offset = -Numerics.abs(skeletonProbas[s][idmap[ngb]]-skeletonProbas[s][idmap[start[obj]]]);
+                                        s = nskel;
                                     }
                                 }
-                                score *= factor;
+                                score += offset;
+                                if (k>=18) if (score>0) score *= ISQRT3; else score /= ISQRT3;
+                                else if (k>=6) if (score>0) score *= ISQRT2; else score /= ISQRT2;
                                 heap.addValue(score,ngb,combinedLabels[best][idmap[ngb]]);
                                 best=nbest;
                             }
@@ -3098,14 +3190,16 @@ public class ConditionalShapeSegmentation {
                                     for (int best=0;best<nbest;best++) {
                                         if (combinedLabels[best][idmap[ngb]]>100*(obj+1) && combinedLabels[best][idmap[ngb]]<100*(obj+2)) {
                                             float newscore = combinedProbas[best][idmap[ngb]]-combinedProbas[Numerics.max(0,nextbest[obj][idmap[ngb]])][idmap[ngb]];
-                                            float factor = 0.0f;
-                                            for (int s=0;s<nbest/4;s++) {
+                                            float offset = 0.0f;
+                                            for (int s=0;s<nskel;s++) {
                                                 if (skeletonLabels[s][idmap[ngb]]==101*(obj+1)) {
-                                                    factor = skeletonProbas[s][idmap[ngb]];
-                                                    s = nbest/4;
+                                                    offset = -Numerics.abs(skeletonProbas[s][idmap[ngb]]-skeletonProbas[s][idmap[xyz]]);
+                                                    s = nskel;
                                                 }
                                             }
-                                            newscore *= factor;
+                                            newscore += offset;
+                                            if (k>=18) if (newscore>0) newscore *= ISQRT3; else newscore /= ISQRT3;
+                                            else if (k>=6) if (newscore>0) newscore *= ISQRT2; else newscore /= ISQRT2;
                                             heap.addValue(newscore,ngb,combinedLabels[best][idmap[ngb]]);
                                             best=nbest;
                                         }                                        
@@ -3137,14 +3231,16 @@ public class ConditionalShapeSegmentation {
                         for (int best=0;best<nbest;best++) {
                             if (combinedLabels[best][idmap[ngb]]>100*(obj+1) && combinedLabels[best][idmap[ngb]]<100*(obj+2)) {
                                 float score = combinedProbas[best][idmap[ngb]]-combinedProbas[Numerics.max(0,nextbest[obj][idmap[ngb]])][idmap[ngb]];
-                                float factor = 0.0f;
-                                for (int s=0;s<nbest/4;s++) {
+                                float offset = 0.0f;
+                                for (int s=0;s<nskel;s++) {
                                     if (skeletonLabels[s][idmap[ngb]]==101*(obj+1)) {
-                                        factor = skeletonProbas[s][idmap[ngb]];
-                                        s = nbest/4;
+                                        offset = -Numerics.abs(skeletonProbas[s][idmap[ngb]]-skeletonProbas[s][idmap[start[obj]]]);
+                                        s = nskel;
                                     }
                                 }
-                                score *= factor;
+                                score += offset;
+                                if (k>=18) if (score>0) score *= ISQRT3; else score /= ISQRT3;
+                                else if (k>=6) if (score>0) score *= ISQRT2; else score /= ISQRT2;
                                 heap.addValue(score,ngb,combinedLabels[best][idmap[ngb]]);
                                 best=nbest;
                             }
@@ -3175,14 +3271,213 @@ public class ConditionalShapeSegmentation {
                                     for (int best=0;best<nbest;best++) {
                                         if (combinedLabels[best][idmap[ngb]]>100*(obj+1) && combinedLabels[best][idmap[ngb]]<100*(obj+2)) {
                                             float newscore = combinedProbas[best][idmap[ngb]]-combinedProbas[Numerics.max(0,nextbest[obj][idmap[ngb]])][idmap[ngb]];
-                                            float factor = 0.0f;
-                                            for (int s=0;s<nbest/4;s++) {
+                                            float offset = 0.0f;
+                                            for (int s=0;s<nskel;s++) {
                                                 if (skeletonLabels[s][idmap[ngb]]==101*(obj+1)) {
-                                                    factor = skeletonProbas[s][idmap[ngb]];
-                                                    s = nbest/4;
+                                                    offset = -Numerics.abs(skeletonProbas[s][idmap[ngb]]-skeletonProbas[s][idmap[xyz]]);
+                                                    s = nskel;
                                                 }
                                             }
-                                            newscore *= factor;
+                                            newscore += offset;
+                                            if (k>=18) if (newscore>0) newscore *= ISQRT3; else newscore /= ISQRT3;
+                                            else if (k>=6) if (newscore>0) newscore *= ISQRT2; else newscore /= ISQRT2;
+                                            heap.addValue(newscore,ngb,combinedLabels[best][idmap[ngb]]);
+                                            best=nbest;
+                                        }
+
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // final segmentation: collapse onto result images
+        finalLabel = new int[nxyz];
+        finalProba = new float[nxyz];
+        float[] kept = new float[nobj];
+        for (int x=1;x<ntx-1;x++) for (int y=1;y<nty-1;y++) for (int z=1;z<ntz-1;z++) {
+            int xyz = x+ntx*y+ntx*nty*z;
+            if (mask[xyz]) {
+                int obj = labels[idmap[xyz]];
+                for (int best=0;best<nbest;best++) {
+                    if (combinedLabels[best][idmap[xyz]]>100*(obj+1) && combinedLabels[best][idmap[xyz]]<100*(obj+2)) {
+                        finalProba[xyz] = Numerics.max(finalProba[xyz],combinedProbas[best][idmap[xyz]]);
+                        best=nbest;
+                    }
+                }
+                finalLabel[xyz] = obj;
+            }
+        }
+        return;            
+	}
+	
+	public void conditionalPrecomputedDirectVolumeGrowth(float spread) {
+	    // main idea: region growing from inside, until within volume prior
+	    // and a big enough difference in "certainty" score?
+	    
+		// find appropriate threshold to have correct volume; should use a fast marching approach!
+		BinaryHeapPair	heap = new BinaryHeapPair(nx*ny+ny*nz+nz*nx, BinaryHeapPair.MAXTREE);
+		int[] labels = new int[ndata];
+        int[] start = new int[nobj];
+        double[] vol = new double[nobj];
+        float[] bestscore = new float[nobj];
+		for (int obj=1;obj<nobj;obj++) bestscore[obj] = -INF;
+		int[][] nextbest = new int[nobj][ndata];
+		heap.reset();
+		
+		// first, find where then next objects probability is in the stack
+		for (int obj=1;obj<nobj;obj++) {
+		    for (int n=0;n<ndata;n++) {
+		        nextbest[obj][n] = 0;
+		        if (combinedLabels[0][n]>100*(obj+1) && combinedLabels[0][n]<100*(obj+2)) {
+		            // find the highest proba for a different structure
+                    for (int b=1;b<nbest;b++) {
+                        if (combinedLabels[b][n]<100*(obj+1) || combinedLabels[b][n]>100*(obj+2)) {
+                            nextbest[obj][n] = b;
+                            b = nbest;
+                        }
+                    }
+                } else {
+                    // find the highest proba for current structure
+                    for (int b=1;b<nbest;b++) {
+                        if (combinedLabels[b][n]>100*(obj+1) || combinedLabels[b][n]<100*(obj+2)) {
+                            nextbest[obj][n] = -b;
+                            b = nbest;
+                        }
+                    }
+                }
+            }
+        }
+		// important: skip first label as background (allows for unbounded growth)
+        for (int obj=1;obj<nobj;obj++) {
+		    // find highest scoring voxel as starting point
+           for (int b=0;b<nbest;b++) {
+               for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
+                    int xyz=x+nx*y+nx*ny*z;
+                    if (mask[xyz]) {
+                        int id = idmap[xyz];
+                        if (combinedLabels[b][id]>100*(obj+1) && combinedLabels[b][id]<100*(obj+2)) {
+                        //if (combinedLabels[b][idmap[xyz]]==101*(obj+1)) {
+                            float score;
+                            if (b==0) score = combinedProbas[0][id]-combinedProbas[nextbest[obj][id]][id];
+                            else score = combinedProbas[b][id]-combinedProbas[0][id];
+                            if (score>bestscore[obj]) {
+                                bestscore[obj] = score;
+                                start[obj] = xyz;
+                            }
+                        }
+                    }
+                }
+                if (bestscore[obj]>-INF) b = nbest;
+            }
+            // hardcode the starting points?
+            //heap.addValue(bestscore[obj],start[obj],101*(obj+1));
+            vol[obj]+= rx*ry*rz;
+            labels[idmap[start[obj]]] = obj;
+            for (byte k = 0; k<connectivity; k++) {
+                int ngb = Ngb.neighborIndex(k, start[obj], nx, ny, nz);
+                if (ngb>0 && ngb<nxyz && mask[ngb]) {
+                    if (labels[idmap[ngb]]==0) {
+                        for (int best=0;best<nbest;best++) {
+                            if (combinedLabels[best][idmap[ngb]]>100*(obj+1) && combinedLabels[best][idmap[ngb]]<100*(obj+2)) {
+                                float score = combinedProbas[best][idmap[ngb]]-combinedProbas[Numerics.max(0,nextbest[obj][idmap[ngb]])][idmap[ngb]];
+                                float offset = 0.0f;
+                                for (int s=0;s<nskel;s++) {
+                                    if (skeletonLabels[s][idmap[ngb]]==101*(obj+1)) {
+                                        offset = -Numerics.abs(skeletonProbas[s][idmap[ngb]]-skeletonProbas[s][idmap[start[obj]]]);
+                                        s = nskel;
+                                    }
+                                }
+                                score += offset;
+                                if (k>=18) if (score>0) score *= ISQRT3; else score /= ISQRT3;
+                                else if (k>=6) if (score>0) score *= ISQRT2; else score /= ISQRT2;
+                                heap.addValue(score,ngb,combinedLabels[best][idmap[ngb]]);
+                                best=nbest;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+                
+        float[] prev = new float[nobj];
+        double[] bestvol = new double[nobj];
+        for (int obj=0;obj<nobj;obj++) {
+            vol[obj] = 0.0;
+            bestvol[obj] = FastMath.exp(logVolMean[obj]);
+        }
+        System.out.println("\nOptimized volumes: ");
+        for (int obj=1;obj<nobj;obj++) System.out.println(obj+": "+bestvol[obj]);
+        // re-run one last time to get the segmentation
+        heap.reset();
+        for (int obj=0;obj<nobj;obj++) {
+            vol[obj] = 0.0;
+        }
+        for(int id=0;id<ndata;id++) labels[id] = 0;
+        for (int obj=1;obj<nobj;obj++) {
+            // hardcode the starting points?
+            //heap.addValue(bestscore[obj],start[obj],101*(obj+1));
+            vol[obj]+= rx*ry*rz;
+            labels[idmap[start[obj]]] = obj;
+            for (byte k = 0; k<connectivity; k++) {
+                int ngb = Ngb.neighborIndex(k, start[obj], nx, ny, nz);
+                if (ngb>0 && ngb<nxyz && mask[ngb]) {
+                    if (labels[idmap[ngb]]==0) {
+                        for (int best=0;best<nbest;best++) {
+                            if (combinedLabels[best][idmap[ngb]]>100*(obj+1) && combinedLabels[best][idmap[ngb]]<100*(obj+2)) {
+                                float score = combinedProbas[best][idmap[ngb]]-combinedProbas[Numerics.max(0,nextbest[obj][idmap[ngb]])][idmap[ngb]];
+                                float offset = 0.0f;
+                                for (int s=0;s<nskel;s++) {
+                                    if (skeletonLabels[s][idmap[ngb]]==101*(obj+1)) {
+                                        offset = -Numerics.abs(skeletonProbas[s][idmap[ngb]]-skeletonProbas[s][idmap[start[obj]]]);
+                                        s = nskel;
+                                    }
+                                }
+                                score += offset;
+                                if (k>=18) if (score>0) score *= ISQRT3; else score /= ISQRT3;
+                                else if (k>=6) if (score>0) score *= ISQRT2; else score /= ISQRT2;
+                                heap.addValue(score,ngb,combinedLabels[best][idmap[ngb]]);
+                                best=nbest;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        while (heap.isNotEmpty()) {
+            float score = heap.getFirst();
+            int xyz = heap.getFirstId1();
+            int obj1obj2 = heap.getFirstId2();
+            heap.removeFirst();
+            if (labels[idmap[xyz]]==0) {
+                int obj = Numerics.floor(obj1obj2/100)-1;
+                if (vol[obj]<bestvol[obj]) {
+                    // update the values
+                    vol[obj]+=rx*ry*rz;
+                    labels[idmap[xyz]] = obj;
+                
+                    // add neighbors
+                    //for (byte k = 0; k<6; k++) {
+                    for (byte k = 0; k<connectivity; k++) {
+                        int ngb = Ngb.neighborIndex(k, xyz, nx, ny, nz);
+                        if (ngb>0 && ngb<nxyz && idmap[ngb]>-1) {
+                            if (mask[ngb]) {
+                                if (labels[idmap[ngb]]==0) {
+                                    for (int best=0;best<nbest;best++) {
+                                        if (combinedLabels[best][idmap[ngb]]>100*(obj+1) && combinedLabels[best][idmap[ngb]]<100*(obj+2)) {
+                                            float newscore = combinedProbas[best][idmap[ngb]]-combinedProbas[Numerics.max(0,nextbest[obj][idmap[ngb]])][idmap[ngb]];
+                                            float offset = 0.0f;
+                                            for (int s=0;s<nskel;s++) {
+                                                if (skeletonLabels[s][idmap[ngb]]==101*(obj+1)) {
+                                                    offset = -Numerics.abs(skeletonProbas[s][idmap[ngb]]-skeletonProbas[s][idmap[xyz]]);
+                                                    s = nskel;
+                                                }
+                                            }
+                                            newscore += offset;
+                                            if (k>=18) if (newscore>0) newscore *= ISQRT3; else newscore /= ISQRT3;
+                                            else if (k>=6) if (newscore>0) newscore *= ISQRT2; else newscore /= ISQRT2;
                                             heap.addValue(newscore,ngb,combinedLabels[best][idmap[ngb]]);
                                             best=nbest;
                                         }
