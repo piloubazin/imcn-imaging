@@ -178,6 +178,7 @@ public class LevelsetThickness {
         thickImage = new float[nxyz];
         medialImage = new float[nxyz];
         distImage = new float[nxyz];
+        for (int xyz=0;xyz<nxyz;xyz++) distImage[xyz] = 10.0f*rmax;
         
 	    for (int n=0;n<nlb;n++) if (lbl[n]>0) {
 	       
@@ -234,7 +235,7 @@ public class LevelsetThickness {
                     if (medial[xyz]>=0.5f && (medial[xyz+1]<0.5f || medial[xyz-1]<0.5f
                                            || medial[xyz+nx]<0.5f || medial[xyz-nx]<0.5f
                                            || medial[xyz+nx*ny]<0.5f || medial[xyz-nx*ny]<0.5f)) 
-                        dist[xyz] = 0.5f-medialImage[xyz];
+                        dist[xyz] = 0.5f-medial[xyz];
                     else if (medial[xyz]<0.5f && (medial[xyz+1]>=0.5f || medial[xyz-1]>=0.5f
                                                || medial[xyz+nx]>=0.5f || medial[xyz-nx]>=0.5f
                                                || medial[xyz+nx*ny]>=0.5f || medial[xyz-nx*ny]>=0.5f))
