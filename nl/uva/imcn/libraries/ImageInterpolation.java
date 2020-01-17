@@ -321,7 +321,6 @@ public class ImageInterpolation {
 	 *	linear interpolation, with 0 outside the image
 	 */
 	public static float nearestNeighborClosestInterpolation(float[] image, float x, float y, float z, int c, int nx, int ny, int nz, int nc) {
-		float val;
 		int x0,y0,z0;
 
         // if out of boundary, use closest point
@@ -330,6 +329,19 @@ public class ImageInterpolation {
 		z0 = Numerics.bounded(Numerics.round(z),0,nz-1);
 
 		return image[x0 + nx*y0 + nx*ny*z0 + nx*ny*nz*c];
+	}
+	/**
+	 *	linear interpolation, with 0 outside the image
+	 */
+	public static int nearestNeighborClosestInterpolation(int[] image, float x, float y, float z, int nx, int ny, int nz) {
+		int x0,y0,z0;
+
+        // if out of boundary, use closest point
+		x0 = Numerics.bounded(Numerics.round(x),0,nx-1);
+		y0 = Numerics.bounded(Numerics.round(y),0,ny-1);
+		z0 = Numerics.bounded(Numerics.round(z),0,nz-1);
+
+		return image[x0 + nx*y0 + nx*ny*z0];
 	}
 	/**
 	 *	linear interpolation, with 0 outside the image
