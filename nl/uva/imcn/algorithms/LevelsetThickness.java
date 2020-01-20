@@ -81,6 +81,8 @@ public class LevelsetThickness {
 
 		float rmax = Numerics.max(rx,ry,rz);
 	    
+		float size = 0.0f;
+		
 		float[] levelset;
 		if (featureParam.equals("probability_map")) {
 		    float[] proba = shapeImage;
@@ -89,32 +91,57 @@ public class LevelsetThickness {
             for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
                 int xyz = x+nx*y+nx*ny*z;
                 if (x>0 && x<nx-1 && y>0 && y<ny-1 && z>0 && z<nz-1) {
-                    if (proba[xyz]>=0.5f && (proba[xyz+1]<0.5f || proba[xyz-1]<0.5f
-                                               || proba[xyz+nx]<0.5f || proba[xyz-nx]<0.5f
-                                               || proba[xyz+nx*ny]<0.5f || proba[xyz-nx*ny]<0.5f)) 
-                        levelset[xyz] = 0.5f-proba[xyz];
-                    else if (proba[xyz]<0.5f && (proba[xyz+1]>=0.5f || proba[xyz-1]>=0.5f
-                                                   || proba[xyz+nx]>=0.5f || proba[xyz-nx]>=0.5f
-                                                   || proba[xyz+nx*ny]>=0.5f || proba[xyz-nx*ny]>=0.5f))
-                        
-                        levelset[xyz] = -0.5f;
-                    else if (proba[xyz]>=0.5f) levelset[xyz] = -1.0f;
+                    if (proba[xyz]>=0.5f) levelset[xyz] = -1.0f;
                     else levelset[xyz] = +1.0f;
+                    
+                    if (proba[xyz]>=0.5f && (proba[xyz+1]<0.5f || proba[xyz-1]<0.5f))
+                        levelset[xyz] = (0.5f-proba[xyz])*rx/rmax;
+                    if (proba[xyz]>=0.5f && (proba[xyz+nx]<0.5f || proba[xyz-nx]<0.5f))
+                        levelset[xyz] = Numerics.max(levelset[xyz], (0.5f-proba[xyz])*ry/rmax);
+                    if (proba[xyz]>=0.5f && (proba[xyz+nx*ny]<0.5f || proba[xyz-nx*ny]<0.5f))
+                        levelset[xyz] = Numerics.max(levelset[xyz], (0.5f-proba[xyz])*rz/rmax);
+                    
+                    if (proba[xyz]<0.5f && (proba[xyz+1]>=0.5f || proba[xyz-1]>=0.5f))
+                        levelset[xyz] = (0.5f-proba[xyz])*rx/rmax;
+                    if (proba[xyz]<0.5f && (proba[xyz+nx]>=0.5f || proba[xyz-nx]>=0.5f))
+                        levelset[xyz] = Numerics.min(levelset[xyz], (0.5f-proba[xyz])*ry/rmax);
+                    if (proba[xyz]>=0.5f && (proba[xyz+nx*ny]<0.5f || proba[xyz-nx*ny]<0.5f))
+                        levelset[xyz] = Numerics.min(levelset[xyz], (0.5f-proba[xyz])*rz/rmax);
+
                 } else levelset[xyz] = +1.0f;
             }
             // second pass to bring the outside at the correct distance
+            /*
             for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
                 int xyz = x+nx*y+nx*ny*z;
                 if (proba[xyz]<0.5f && (proba[xyz+1]>=0.5f || proba[xyz-1]>=0.5f
                                        || proba[xyz+nx]>=0.5f || proba[xyz-nx]>=0.5f
                                        || proba[xyz+nx*ny]>=0.5f || proba[xyz-nx*ny]>=0.5f))
                     
-                    levelset[xyz] = ObjectTransforms.fastMarchingOutsideNeighborDistance(levelset, xyz, nx,ny,nz, rx,ry,rz);
-			}
+                    levelset[xyz] = 0.5f*(levelset[xyz]+ObjectTransforms.fastMarchingOutsideNeighborDistance(levelset, xyz, nx,ny,nz, rx,ry,rz));
+			}*/
+            for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
+                int xyz = x+nx*y+nx*ny*z;
+                if (proba[xyz]>=0.5f && (proba[xyz+1]<0.5f || proba[xyz-1]<0.5f
+                                       || proba[xyz+nx]<0.5f || proba[xyz-nx]<0.5f
+                                       || proba[xyz+nx*ny]<0.5f || proba[xyz-nx*ny]<0.5f)) 
+                
+                    levelset[xyz] = ObjectTransforms.fastMarchingInsideNeighborDistance(levelset, xyz, nx,ny,nz, rx,ry,rz);
+			}            
+            for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
+                int xyz = x+nx*y+nx*ny*z;
+                if (proba[xyz]>=0.5f) size++;
+            }
+            size = (float)FastMath.cbrt(3.0*size/(4.0*FastMath.PI));
             shapeImage = null;
-            levelset = ObjectTransforms.fastMarchingDistanceFunction(levelset, 10.0f*rmax, nx, ny, nz, rx, ry, rz);
+            levelset = ObjectTransforms.fastMarchingDistanceFunction(levelset, size+5.0f, nx, ny, nz, rx, ry, rz);
 		} else {
 		    levelset = shapeImage;
+            for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
+                int xyz = x+nx*y+nx*ny*z;
+                if (levelset[xyz]<=0.0f) size++;
+            }
+            size = (float)FastMath.cbrt(3.0*size/(4.0*FastMath.PI));
 		}
 		
 		// compute the gradient norm
@@ -123,9 +150,26 @@ public class LevelsetThickness {
 		    int xyz = x+nx*y+nx*ny*z;
 		    if (levelset[xyz]<=0) {
                 double grad = 0.0;
-                grad += 0.25*(levelset[xyz+1]-levelset[xyz-1])*(levelset[xyz+1]-levelset[xyz-1])/(rx/rmax);
-                grad += 0.25*(levelset[xyz+nx]-levelset[xyz-nx])*(levelset[xyz+nx]-levelset[xyz-nx])/(ry/rmax);
-                grad += 0.25*(levelset[xyz+nx*ny]-levelset[xyz-nx*ny])*(levelset[xyz+nx*ny]-levelset[xyz-nx*ny])/(rz/rmax);
+                if (levelset[xyz-1]*levelset[xyz+1]>=0)
+                    grad += 0.25*Numerics.square( (levelset[xyz+1]-levelset[xyz-1])/(rx/rmax) );
+                else if (levelset[xyz-1]*levelset[xyz]>=0)
+                    grad += Numerics.square( (levelset[xyz]-levelset[xyz-1])/(rx/rmax) );
+                else 
+                    grad += Numerics.square( (levelset[xyz+1]-levelset[xyz])/(rx/rmax) );
+                    
+                if (levelset[xyz+nx]*levelset[xyz-nx]>=0)
+                    grad += 0.25*Numerics.square( (levelset[xyz+nx]-levelset[xyz-nx])/(ry/rmax) );
+                else if (levelset[xyz-nx]*levelset[xyz]>=0)
+                    grad += Numerics.square( (levelset[xyz]-levelset[xyz-nx])/(ry/rmax) );
+                else
+                    grad += Numerics.square( (levelset[xyz+nx]-levelset[xyz])/(ry/rmax) );
+                
+                if (levelset[xyz-nx*ny]*levelset[xyz+nx*ny]>=0)
+                    grad += 0.25*Numerics.square( (levelset[xyz+nx*ny]-levelset[xyz-nx*ny])/(rz/rmax) );
+                else if (levelset[xyz-nx*ny]*levelset[xyz]>=0)
+                    grad += Numerics.square( (levelset[xyz]-levelset[xyz-nx*ny])/(rz/rmax) );
+                else
+                    grad += Numerics.square( (levelset[xyz+nx*ny]-levelset[xyz])/(rz/rmax) );
                 
                 medialImage[xyz] = (float)Numerics.max(0.0, 1.0-FastMath.sqrt(grad));
             } else {
@@ -138,21 +182,27 @@ public class LevelsetThickness {
         for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
             int xyz = x+nx*y+nx*ny*z;
             if (x>0 && x<nx-1 && y>0 && y<ny-1 && z>0 && z<nz-1) {
-                if (medialImage[xyz]>=0.5f && (medialImage[xyz+1]<0.5f || medialImage[xyz-1]<0.5f
-                                           || medialImage[xyz+nx]<0.5f || medialImage[xyz-nx]<0.5f
-                                           || medialImage[xyz+nx*ny]<0.5f || medialImage[xyz-nx*ny]<0.5f)) 
-                    distImage[xyz] = 0.5f-medialImage[xyz];
-                else if (medialImage[xyz]<0.5f && (medialImage[xyz+1]>=0.5f || medialImage[xyz-1]>=0.5f
-                                               || medialImage[xyz+nx]>=0.5f || medialImage[xyz-nx]>=0.5f
-                                               || medialImage[xyz+nx*ny]>=0.5f || medialImage[xyz-nx*ny]>=0.5f))
-                    distImage[xyz] = 0.5f-medialImage[xyz];
-                else if (medialImage[xyz]>=0.5f) distImage[xyz] = -1.0f;
-                else distImage[xyz] = +1.0f;
+                    if (medialImage[xyz]>=0.5f) distImage[xyz] = -1.0f;
+                    else distImage[xyz] = +1.0f;
+                    
+                    if (medialImage[xyz]>=0.5f && (medialImage[xyz+1]<0.5f || medialImage[xyz-1]<0.5f))
+                        distImage[xyz] = (0.5f-medialImage[xyz])*rx/rmax;
+                    if (medialImage[xyz]>=0.5f && (medialImage[xyz+nx]<0.5f || medialImage[xyz-nx]<0.5f))
+                        distImage[xyz] = Numerics.max(distImage[xyz], (0.5f-medialImage[xyz])*ry/rmax);
+                    if (medialImage[xyz]>=0.5f && (medialImage[xyz+nx*ny]<0.5f || medialImage[xyz-nx*ny]<0.5f)) 
+                        distImage[xyz] = Numerics.max(distImage[xyz], (0.5f-medialImage[xyz])*rz/rmax);
+                    
+                    if (medialImage[xyz]<0.5f && (medialImage[xyz+1]>=0.5f || medialImage[xyz-1]>=0.5f))
+                        distImage[xyz] = (0.5f-medialImage[xyz])*rx/rmax;
+                    if (medialImage[xyz]<0.5f && (medialImage[xyz+nx]>=0.5f || medialImage[xyz-nx]>=0.5f))
+                        distImage[xyz] = Numerics.min(distImage[xyz], (0.5f-medialImage[xyz])*ry/rmax);
+                    if (medialImage[xyz]<0.5f && (medialImage[xyz+nx*ny]>=0.5f || medialImage[xyz-nx*ny]>=0.5f))
+                        distImage[xyz] = Numerics.min(distImage[xyz], (0.5f-medialImage[xyz])*rz/rmax);
             } else {
                 distImage[xyz] = +1.0f;
             }
         }
-        distImage = ObjectTransforms.fastMarchingDistanceFunction(distImage, 10.0f*rmax, nx, ny, nz, rx, ry, rz);
+        distImage = ObjectTransforms.fastMarchingDistanceFunction(distImage, size+5.0f, nx, ny, nz, rx, ry, rz);
 
 		// add distances to get thickness
 		thickImage = new float[nxyz];
@@ -182,20 +232,28 @@ public class LevelsetThickness {
         
 	    for (int n=0;n<nlb;n++) if (lbl[n]>0) {
 	       
+            float size = 0.0f;
+		
             float[] levelset= new float[nxyz];
             for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
                 int xyz = x+nx*y+nx*ny*z;
                 if (x>0 && x<nx-1 && y>0 && y<ny-1 && z>0 && z<nz-1) {
-                    if (labelImage[xyz]==lbl[n] && (labelImage[xyz+1]!=lbl[n] || labelImage[xyz-1]!=lbl[n]
-                                                 || labelImage[xyz+nx]!=lbl[n] || labelImage[xyz-nx]!=lbl[n]
-                                                 || labelImage[xyz+nx*ny]!=lbl[n] || labelImage[xyz-nx*ny]!=lbl[n]) )
-                        levelset[xyz] = -0.5f;
-                    else if (labelImage[xyz]!=lbl[n] && (labelImage[xyz+1]==lbl[n] || labelImage[xyz-1]==lbl[n]
-                                                      || labelImage[xyz+nx]==lbl[n] || labelImage[xyz-nx]==lbl[n]
-                                                      || labelImage[xyz+nx*ny]==lbl[n] || labelImage[xyz-nx*ny]==lbl[n]) )
-                        levelset[xyz] = 0.5f;
-                    else if (labelImage[xyz]==lbl[n]) levelset[xyz] = -1.0f;
+                    if (labelImage[xyz]==lbl[n]) levelset[xyz] = -1.0f;
                     else levelset[xyz] = +1.0f;
+                    
+                    if (labelImage[xyz]==lbl[n] && (labelImage[xyz+1]!=lbl[n] || labelImage[xyz-1]!=lbl[n]))
+                        levelset[xyz] = -0.5f*rx/rmax;
+                    if (labelImage[xyz]==lbl[n] && (labelImage[xyz+nx]!=lbl[n] || labelImage[xyz-nx]!=lbl[n]))
+                        levelset[xyz] = Numerics.max(levelset[xyz], -0.5f*ry/rmax);
+                    if (labelImage[xyz]==lbl[n] && (labelImage[xyz+nx*ny]!=lbl[n] || labelImage[xyz-nx*ny]!=lbl[n]))
+                        levelset[xyz] = Numerics.max(levelset[xyz], -0.5f*rz/rmax);
+                    
+                    if (labelImage[xyz]!=lbl[n] && (labelImage[xyz+1]==lbl[n] || labelImage[xyz-1]==lbl[n]))
+                        levelset[xyz] = 0.5f*rx/rmax;
+                    if (labelImage[xyz]!=lbl[n] && (labelImage[xyz+nx]==lbl[n] || labelImage[xyz-nx]==lbl[n]))
+                        levelset[xyz] = Numerics.min(levelset[xyz], 0.5f*ry/rmax);
+                    if (labelImage[xyz]!=lbl[n] && (labelImage[xyz+nx*ny]==lbl[n] || labelImage[xyz-nx*ny]==lbl[n]))
+                        levelset[xyz] = Numerics.min(levelset[xyz], 0.5f*rz/rmax);
                 } else {
                     levelset[xyz] = +1.0f;
                 }
@@ -203,13 +261,20 @@ public class LevelsetThickness {
             // second pass to bring the outside at the correct distance
             for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
                 int xyz = x+nx*y+nx*ny*z;
-                if (labelImage[xyz]!=lbl[n] && (labelImage[xyz+1]==lbl[n] || labelImage[xyz-1]==lbl[n]
-                                             || labelImage[xyz+nx]==lbl[n] || labelImage[xyz-nx]==lbl[n]
-                                             || labelImage[xyz+nx*ny]==lbl[n] || labelImage[xyz-nx*ny]==lbl[n]) )
-                    
-                    levelset[xyz] = ObjectTransforms.fastMarchingOutsideNeighborDistance(levelset, xyz, nx,ny,nz, rx,ry,rz);
-			}
-            levelset = ObjectTransforms.fastMarchingDistanceFunction(levelset, 10.0f*rmax, nx, ny, nz, rx, ry, rz);
+                if (labelImage[xyz]==lbl[n] && (labelImage[xyz+1]!=lbl[n] || labelImage[xyz-1]!=lbl[n]
+                                                 || labelImage[xyz+nx]!=lbl[n] || labelImage[xyz-nx]!=lbl[n]
+                                                 || labelImage[xyz+nx*ny]!=lbl[n] || labelImage[xyz-nx*ny]!=lbl[n]) )
+                
+                    //levelset[xyz] = 0.5f*(levelset[xyz]+ObjectTransforms.fastMarchingInsideNeighborDistance(levelset, xyz, nx,ny,nz, rx,ry,rz));
+                    levelset[xyz] = ObjectTransforms.fastMarchingInsideNeighborDistance(levelset, xyz, nx,ny,nz, rx,ry,rz);
+			}    
+			for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
+                int xyz = x+nx*y+nx*ny*z;
+                if (labelImage[xyz]==lbl[n]) size++;
+            }
+            size = (float)FastMath.cbrt(3.0*size/(4.0*FastMath.PI));
+
+            levelset = ObjectTransforms.fastMarchingDistanceFunction(levelset, size+5.0f, nx, ny, nz, rx, ry, rz);
             
             // compute the gradient norm
             float[] medial = new float[nxyz];
@@ -217,10 +282,27 @@ public class LevelsetThickness {
                 int xyz = x+nx*y+nx*ny*z;
                 if (levelset[xyz]<=0) {
                     double grad = 0.0;
-                    grad += 0.25*(levelset[xyz+1]-levelset[xyz-1])*(levelset[xyz+1]-levelset[xyz-1])/(rx/rmax);
-                    grad += 0.25*(levelset[xyz+nx]-levelset[xyz-nx])*(levelset[xyz+nx]-levelset[xyz-nx])/(ry/rmax);
-                    grad += 0.25*(levelset[xyz+nx*ny]-levelset[xyz-nx*ny])*(levelset[xyz+nx*ny]-levelset[xyz-nx*ny])/(rz/rmax);
+                    if (levelset[xyz-1]*levelset[xyz+1]>=0)
+                        grad += 0.25*Numerics.square( (levelset[xyz+1]-levelset[xyz-1])/(rx/rmax) );
+                    else if (levelset[xyz-1]*levelset[xyz]>=0)
+                        grad += Numerics.square( (levelset[xyz]-levelset[xyz-1])/(rx/rmax) );
+                    else 
+                        grad += Numerics.square( (levelset[xyz+1]-levelset[xyz])/(rx/rmax) );
+                        
+                    if (levelset[xyz+nx]*levelset[xyz-nx]>=0)
+                        grad += 0.25*Numerics.square( (levelset[xyz+nx]-levelset[xyz-nx])/(ry/rmax) );
+                    else if (levelset[xyz-nx]*levelset[xyz]>=0)
+                        grad += Numerics.square( (levelset[xyz]-levelset[xyz-nx])/(ry/rmax) );
+                    else
+                        grad += Numerics.square( (levelset[xyz+nx]-levelset[xyz])/(ry/rmax) );
                     
+                    if (levelset[xyz-nx*ny]*levelset[xyz+nx*ny]>=0)
+                        grad += 0.25*Numerics.square( (levelset[xyz+nx*ny]-levelset[xyz-nx*ny])/(rz/rmax) );
+                    else if (levelset[xyz-nx*ny]*levelset[xyz]>=0)
+                        grad += Numerics.square( (levelset[xyz]-levelset[xyz-nx*ny])/(rz/rmax) );
+                    else
+                        grad += Numerics.square( (levelset[xyz+nx*ny]-levelset[xyz])/(rz/rmax) );
+                 
                     medial[xyz] = (float)Numerics.max(0.0, 1.0-FastMath.sqrt(grad));
                 } else {
                     medial[xyz] = 0.0f;
@@ -232,21 +314,27 @@ public class LevelsetThickness {
             for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
                 int xyz = x+nx*y+nx*ny*z;
                 if (x>0 && x<nx-1 && y>0 && y<ny-1 && z>0 && z<nz-1) {
-                    if (medial[xyz]>=0.5f && (medial[xyz+1]<0.5f || medial[xyz-1]<0.5f
-                                           || medial[xyz+nx]<0.5f || medial[xyz-nx]<0.5f
-                                           || medial[xyz+nx*ny]<0.5f || medial[xyz-nx*ny]<0.5f)) 
-                        dist[xyz] = 0.5f-medial[xyz];
-                    else if (medial[xyz]<0.5f && (medial[xyz+1]>=0.5f || medial[xyz-1]>=0.5f
-                                               || medial[xyz+nx]>=0.5f || medial[xyz-nx]>=0.5f
-                                               || medial[xyz+nx*ny]>=0.5f || medial[xyz-nx*ny]>=0.5f))
-                        dist[xyz] = 0.5f-medial[xyz];
-                    else if (medial[xyz]>=0.5f) dist[xyz] = -1.0f;
+                    if (medial[xyz]>=0.5f) dist[xyz] = -1.0f;
                     else dist[xyz] = +1.0f;
+                    
+                    if (medial[xyz]>=0.5f && (medial[xyz+1]<0.5f || medial[xyz-1]<0.5f))
+                        dist[xyz] = (0.5f-medial[xyz])*rx/rmax;
+                    if (medial[xyz]>=0.5f && (medial[xyz+nx]<0.5f || medial[xyz-nx]<0.5f))
+                        dist[xyz] = Numerics.max(dist[xyz], (0.5f-medial[xyz])*ry/rmax);
+                    if (medial[xyz]>=0.5f && (medial[xyz+nx*ny]<0.5f || medial[xyz-nx*ny]<0.5f)) 
+                        dist[xyz] = Numerics.max(dist[xyz], (0.5f-medial[xyz])*rz/rmax);
+                    
+                    if (medial[xyz]<0.5f && (medial[xyz+1]>=0.5f || medial[xyz-1]>=0.5f))
+                        dist[xyz] = (0.5f-medial[xyz])*rx/rmax;
+                    if (medial[xyz]<0.5f && (medial[xyz+nx]>=0.5f || medial[xyz-nx]>=0.5f))
+                        dist[xyz] = Numerics.min(dist[xyz], (0.5f-medial[xyz])*ry/rmax);
+                    if (medial[xyz]<0.5f && (medial[xyz+nx*ny]>=0.5f || medial[xyz-nx*ny]>=0.5f))
+                        dist[xyz] = Numerics.min(dist[xyz], (0.5f-medial[xyz])*rz/rmax);
                 } else {
                     dist[xyz] = +1.0f;
                 }
             }
-            dist = ObjectTransforms.fastMarchingDistanceFunction(dist, 10.0f*rmax, nx, ny, nz, rx, ry, rz);
+            dist = ObjectTransforms.fastMarchingDistanceFunction(dist, size+5.0f, nx, ny, nz, rx, ry, rz);
 
             // combine maps to get thickness
             for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {

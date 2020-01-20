@@ -825,6 +825,105 @@ public class ObjectTransforms {
        return levelset;
      }
 
+	public static final float[] fastMarchingDistanceFunction(float[] levelset, int nx, int ny, int nz, float rx, float ry, float rz)  {
+        // computation variables
+        boolean[] object = new boolean[nx*ny*nz]; // note: using a byte instead of boolean for the second pass
+		boolean[] processed = new boolean[nx*ny*nz]; // note: using a byte instead of boolean for the second pass
+		boolean[] mask = new boolean[nx*ny*nz]; // note: using a byte instead of boolean for the second pass
+		float[] nbdist = new float[6];
+		boolean[] nbflag = new boolean[6];
+		BinaryHeap2D heap = new BinaryHeap2D(nx*ny+ny*nz+nz*nx, BinaryHeap2D.MINTREE);
+				        		
+		float rmax = Numerics.max(rx,ry,rz);
+		float[] r2 = new float[6];
+		r2[0] = rx/rmax;
+		r2[1] = rx/rmax;
+		r2[2] = ry/rmax;
+		r2[3] = ry/rmax;
+		r2[4] = rz/rmax;
+		r2[5] = rz/rmax;
+		for (int l=0;l<6;l++) r2[l] *= r2[l];
+		
+		// compute the neighboring labels and corresponding distance functions (! not the MGDM functions !)
+        //if (debug) System.out.print("fast marching\n");		
+        heap.reset();
+        // initialize mask and processing domain
+        float maxlvl = Numerics.max(nx/2.0f,ny/2.0f,nz/2.0f);
+		for (int x=0; x<nx; x++) for (int y=0; y<ny; y++) for (int z = 0; z<nz; z++) {
+			int xyz = x+nx*y+nx*ny*z;
+        	object[xyz] = (levelset[xyz]<=0);
+			if (x>0 && x<nx-1 && y>0 && y<ny-1 && z>0 && z<nz-1) mask[x+nx*y+nx*ny*z] = true;
+			else mask[x+nx*y+nx*ny*z] = false;
+			if (!mask[xyz]) { // inside the masked region: either fully inside or fully outside
+				if (object[xyz]) levelset[xyz] = -maxlvl;
+				else levelset[xyz] = maxlvl;
+			}
+		}
+		// initialize the heap from boundaries
+		for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
+        	int xyz = x+nx*y+nx*ny*z;
+        	processed[xyz] = false;
+        	// search for boundaries
+        	for (byte k = 0; k<6; k++) {
+				int xyzn = fastMarchingNeighborIndex(k, xyz, nx, ny, nz);
+				if (object[xyzn]!=object[xyz]) {
+					// we assume the levelset value is correct at the boundary
+					
+					// add to the heap with previous value
+					byte lb = 0;
+					if (object[xyzn]) lb = 1;
+					heap.addValue(Numerics.abs(levelset[xyzn]),xyzn,lb);
+                }
+            }
+        }
+		//if (debug) System.out.print("init\n");		
+
+        // grow the labels and functions
+        float maxdist = 0.0f;
+        while (heap.isNotEmpty()) {
+        	// extract point with minimum distance
+        	float dist = heap.getFirst();
+        	int xyz = heap.getFirstId();
+        	byte lb = heap.getFirstState();
+			heap.removeFirst();
+
+			// if more than nmgdm labels have been found already, this is done
+			if (processed[xyz])  continue;
+			
+			// update the distance functions at the current level
+			if (lb==1) levelset[xyz] = -dist;
+			else levelset[xyz] = dist;
+			processed[xyz]=true; // update the current level
+ 			
+			// find new neighbors
+			for (byte k = 0; k<6; k++) {
+				int xyzn = fastMarchingNeighborIndex(k, xyz, nx, ny, nz);
+				
+				// must be in outside the object or its processed neighborhood
+				if (mask[xyzn] && !processed[xyzn]) if (object[xyzn]==object[xyz]) {
+					// compute new distance based on processed neighbors for the same object
+					for (byte l=0; l<6; l++) {
+						nbdist[l] = -1.0f;
+						nbflag[l] = false;
+						int xyznb = fastMarchingNeighborIndex(l, xyzn, nx, ny, nz);
+						// note that there is at most one value used here
+						if (mask[xyznb] && processed[xyznb]) if (object[xyznb]==object[xyz]) {
+							nbdist[l] = Numerics.abs(levelset[xyznb]);
+							nbflag[l] = true;
+						}			
+					}
+					float newdist = minimumMarchingDistance(nbdist, nbflag, r2);
+					
+					// add to the heap
+					heap.addValue(newdist,xyzn,lb);
+				}
+			}			
+		}
+		//if (debug) System.out.print("done\n");		
+		
+       return levelset;
+    }
+
 	public static final float[] fastMarchingDistanceFunction(float[] levelset, float maxdist, int nx, int ny, int nz)  {
         // computation variables
         boolean[] object = new boolean[nx*ny*nz]; // note: using a byte instead of boolean for the second pass
@@ -933,6 +1032,15 @@ public class ObjectTransforms {
 		BinaryHeap2D heap = new BinaryHeap2D(nx*ny+ny*nz+nz*nx, BinaryHeap2D.MINTREE);
 				  
 		float rmax = Numerics.max(rx,ry,rz);
+		float[] r2 = new float[6];
+		r2[0] = rx/rmax;
+		r2[1] = rx/rmax;
+		r2[2] = ry/rmax;
+		r2[3] = ry/rmax;
+		r2[4] = rz/rmax;
+		r2[5] = rz/rmax;
+		for (int l=0;l<6;l++) r2[l] *= r2[l];
+		
 		// compute the neighboring labels and corresponding distance functions (! not the MGDM functions !)
         //if (debug) System.out.print("fast marching\n");		
         heap.reset();
@@ -998,11 +1106,11 @@ public class ObjectTransforms {
 						int xyznb = fastMarchingNeighborIndex(l, xyzn, nx, ny, nz);
 						// note that there is at most one value used here
 						if (mask[xyznb] && processed[xyznb]) if (object[xyznb]==object[xyz]) {
-							nbdist[l] = Numerics.abs(levelset[xyznb])*fastMarchingNeighborScale(l,rx,ry,rz)/rmax;
+							nbdist[l] = Numerics.abs(levelset[xyznb]);
 							nbflag[l] = true;
 						}			
 					}
-					float newdist = minimumMarchingDistance(nbdist, nbflag);
+					float newdist = minimumMarchingDistance(nbdist, nbflag, r2);
 					
 					// add to the heap
 					heap.addValue(newdist,xyzn,lb);
@@ -1035,34 +1143,56 @@ public class ObjectTransforms {
 		}
 	}
 
-    /** ordering of the neighborhood is important here */
-    private static final float fastMarchingNeighborScale(byte d, float rx, float ry, float rz) {
-		switch (d) {
-			case 0		: 	return rx; 		
-			case 1		:	return rx;
-			case 2		:	return ry;
-			case 3		:	return ry;
-			case 4		:	return rz;
-			case 5		:	return rz;
-			default		:	return 1.0f;
-		}
-	}
-
 	public static final float fastMarchingOutsideNeighborDistance(float[] levelset, int xyz, int nx, int ny, int nz, float rx, float ry, float rz) {
 	    float[] nbdist = new float[6];
 		boolean[] nbflag = new boolean[6];
 		float rmax = Numerics.max(rx,ry,rz);
+		float[] r2 = new float[6];
+		r2[0] = rx/rmax;
+		r2[1] = rx/rmax;
+		r2[2] = ry/rmax;
+		r2[3] = ry/rmax;
+		r2[4] = rz/rmax;
+		r2[5] = rz/rmax;
+		for (int l=0;l<6;l++) r2[l] *= r2[l];
+		
 		for (byte l=0; l<6; l++) {
             nbdist[l] = -1.0f;
             nbflag[l] = false;
             int xyznb = fastMarchingNeighborIndex(l, xyz, nx, ny, nz);
             // note that there is at most one value used here
             if (levelset[xyznb]<=0) {
-                nbdist[l] = Numerics.abs(levelset[xyznb])*fastMarchingNeighborScale(l,rx,ry,rz)/rmax;
+                nbdist[l] = Numerics.abs(levelset[xyznb]);
                 nbflag[l] = true;
             }			
         }
-        return minimumMarchingDistance(nbdist, nbflag);
+        return minimumMarchingDistance(nbdist, nbflag, r2);
+	}
+
+	public static final float fastMarchingInsideNeighborDistance(float[] levelset, int xyz, int nx, int ny, int nz, float rx, float ry, float rz) {
+	    float[] nbdist = new float[6];
+		boolean[] nbflag = new boolean[6];
+		float rmax = Numerics.max(rx,ry,rz);
+		float[] r2 = new float[6];
+		r2[0] = rx/rmax;
+		r2[1] = rx/rmax;
+		r2[2] = ry/rmax;
+		r2[3] = ry/rmax;
+		r2[4] = rz/rmax;
+		r2[5] = rz/rmax;
+		for (int l=0;l<6;l++) r2[l] *= r2[l];
+		
+		for (byte l=0; l<6; l++) {
+            nbdist[l] = -1.0f;
+            nbflag[l] = false;
+            int xyznb = fastMarchingNeighborIndex(l, xyz, nx, ny, nz);
+            // note that there is at most one value used here
+            if (levelset[xyznb]>0) {
+                nbdist[l] = Numerics.abs(levelset[xyznb]);
+                nbflag[l] = true;
+            }			
+        }
+        return -minimumMarchingDistance(nbdist, nbflag, r2);
 	}
 
 	/**
@@ -1077,6 +1207,7 @@ public class ObjectTransforms {
         int count;
         s = 0;
         s2 = 0;
+        
         count = 0;
 
         for (int n=0; n<6; n+=2) {
@@ -1093,6 +1224,49 @@ public class ObjectTransforms {
 				s += val[n+1];
 				s2 += val[n+1]*val[n+1];
 				count++;
+			}
+		}
+         // count must be greater than zero since there must be at least one processed pt in the neighbors
+        if (count==0) System.err.print("!");
+        if (s*s-count*(s2-1.0)<0) {
+        	System.err.print(":");
+        	tmp = 0;
+        	for (int n=0;n<6;n++) if (flag[n]) tmp = Numerics.max(tmp,val[n]);
+        	for (int n=0;n<6;n++) if (flag[n]) tmp = Numerics.min(tmp,val[n]);
+        } else {
+			tmp = (s + (float)FastMath.sqrt((double) (s*s-count*(s2-1.0))))/count;
+		}
+        // The larger root
+        return tmp;
+    }
+	/**
+     * the Fast marching distance computation 
+     * (!assumes a 6D array with opposite coordinates stacked one after the other)
+     * 
+     */
+    private static final float minimumMarchingDistance(float[] val, boolean[] flag, float[] h2) {
+
+        float s, s2; // s = a + b +c; s2 = a*a + b*b +c*c
+        float tmp;
+        float count;
+        s = 0;
+        s2 = 0;
+        count = 0;
+
+        for (int n=0; n<6; n+=2) {
+			if (flag[n] && flag[n+1]) {
+				tmp = Numerics.min(val[n], val[n+1]); // Take the smaller one if both are processed
+				s += tmp/h2[n];
+				s2 += tmp*tmp/h2[n];
+				count+= 1.0f/h2[n];
+			} else if (flag[n]) {
+				s += val[n]/h2[n]; // Else, take the processed one
+				s2 += val[n]*val[n]/h2[n];
+				count+= 1.0f/h2[n];
+			} else if (flag[n+1]) {
+				s += val[n+1]/h2[n];
+				s2 += val[n+1]*val[n+1]/h2[n];
+				count+= 1.0f/h2[n];
 			}
 		}
          // count must be greater than zero since there must be at least one processed pt in the neighbors
