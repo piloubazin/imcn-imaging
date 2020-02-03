@@ -86,7 +86,7 @@ public class BasicSom {
 		
 		// build a circular lattice
 		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
-		    if ( (x-nx/2)*(x-nx/2)+(y-ny/2)*(y-ny/2)+(z-nz/2)*(z-nz/2) < nx+1) {
+		    if ( (x-nx/2)*(x-nx/2)+(y-ny/2)*(y-ny/2)+(z-nz/2)*(z-nz/2) < (nx+1)*(nx+1)/4.0f) {
 		        lattice[x+nx*y+nx*ny*z] = true;
 		    } else {
 		        lattice[x+nx*y+nx*ny*z] = false;
@@ -128,6 +128,52 @@ public class BasicSom {
 	        map[n][0] = x0/(nx-1.0f);
 	        map[n][1] = y0/(ny-1.0f);
 	        map[n][2] = z0/(nz-1.0f);
+	    }
+	    return map;
+	}
+	
+	public final float[][] interpolateSomOnData2D() {
+	    float[][] map = new float[ndata][3];
+	    double[] distances = new double[3];
+	    int[] nodes = new int[3];
+	    for (int n=0;n<ndata;n++) if (mask[n]) {
+	        findClosestNodes(data[n], distances, nodes, 3);
+	        float mapweight = 0.0f;
+	        for (int b=0;b<3;b++) {
+                double z0 = Numerics.floor(nodes[b]/(nx*ny));
+                double y0 = Numerics.floor((nodes[b]-nx*ny*z0)/nx);
+                double x0 = nodes[b] - z0*nx*ny - y0*nx;
+                map[n][0] += (float)(x0/(nx-1.0)/distances[b]);
+                map[n][1] += (float)(y0/(ny-1.0)/distances[b]);
+                map[n][2] += (float)(z0/(nz-1.0)/distances[b]);
+                mapweight += (float)(1.0/distances[b]);
+            }
+            map[n][0] /= mapweight;
+            map[n][1] /= mapweight;
+            map[n][2] /= mapweight;
+	    }
+	    return map;
+	}
+	
+	public final float[][] interpolateSomOnData3D() {
+	    float[][] map = new float[ndata][3];
+	    double[] distances = new double[4];
+	    int[] nodes = new int[4];
+	    for (int n=0;n<ndata;n++) if (mask[n]) {
+	        findClosestNodes(data[n], distances, nodes, 4);
+	        float mapweight = 0.0f;
+	        for (int b=0;b<4;b++) {
+                double z0 = Numerics.floor(nodes[b]/(nx*ny));
+                double y0 = Numerics.floor((nodes[b]-nx*ny*z0)/nx);
+                double x0 = nodes[b] - z0*nx*ny - y0*nx;
+                map[n][0] += (float)(x0/(nx-1.0)/distances[b]);
+                map[n][1] += (float)(y0/(ny-1.0)/distances[b]);
+                map[n][2] += (float)(z0/(nz-1.0)/distances[b]);
+                mapweight += (float)(1.0/distances[b]);
+            }
+            map[n][0] /= mapweight;
+            map[n][1] /= mapweight;
+            map[n][2] /= mapweight;
 	    }
 	    return map;
 	}
@@ -371,15 +417,18 @@ public class BasicSom {
 	    Matrix M = new Matrix(covar);
         SingularValueDecomposition svd = M.svd();
                     
-        // keep the first two for 2D SOM
+        // keep all three for 3D SOM
         float[] eig1 = new float[dim];
         float[] eig2 = new float[dim];
+        float[] eig3 = new float[dim];
         double sig1 = FastMath.sqrt(svd.getSingularValues()[0]);
         double sig2 = FastMath.sqrt(svd.getSingularValues()[1]);
+        double sig3 = FastMath.sqrt(svd.getSingularValues()[2]);
         
         for (int i=0;i<dim;i++) {
             eig1[i] = (float)(sig1*svd.getV().get(i,0));                        
             eig2[i] = (float)(sig2*svd.getV().get(i,1));
+            eig3[i] = (float)(sig3*svd.getV().get(i,2));
         }
 	    // map the avg +/- eigenvalues to som dimensions
         for (int x=0;x<nx;x++) {
@@ -390,7 +439,7 @@ public class BasicSom {
                     float dz = 2.0f*(z-(nz-1.0f)/2.0f)/((nz-1.0f)/2.0f);
                         if (lattice[x+nx*y+nx*ny*z]) {
                         for (int d=0;d<dim;d++) {
-                            som[d][x+nx*y+nx*ny*z] = avg[d] + dx*eig1[d] + dy*eig2[d];
+                            som[d][x+nx*y+nx*ny*z] = avg[d] + dx*eig1[d] + dy*eig2[d] + dz*eig3[d];
                         }
                     }
                 }
@@ -415,6 +464,35 @@ public class BasicSom {
 		    }
 		}
 		return best;
+    }
+   
+    /** 
+	 *  find N closest point to data (unsorted, for interpolation purposes)
+	 */
+    final public void findClosestNodes(float[] val, double[] distance, int[] best, int nb) {
+        double dist;
+        for (int b=0;b<nb;b++) {
+            distance[b] = INF;
+            best[b] = -1;
+        }
+
+		for (int n=0;n<nsom;n++) if (lattice[n]) {
+		    dist = 0.0f;
+		    for (int d=0;d<dim;d++) dist += (som[d][n]-val[d])*(som[d][n]-val[d]);
+		    
+		    int changed = -1;
+		    for (int b=0;b<nb;b++) {
+                if (dist<distance[b]) {
+                    if (changed==-1) changed = b;
+                    else if (distance[b]>distance[changed]) changed = b;
+                }
+            }
+            if (changed>-1) {
+                distance[changed] = dist;
+                best[changed] = n;
+            }
+		}
+		return;
     }
     
     /**

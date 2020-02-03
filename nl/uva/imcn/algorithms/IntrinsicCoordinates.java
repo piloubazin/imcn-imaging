@@ -21,16 +21,16 @@ public class IntrinsicCoordinates {
 	private float rx, ry, rz;
 
 	private String systemParam = "centroid_pca";
-	private static final String[] systemTypes = {"centroid_pca","voxel_pca"}; 
+	private static final String[] systemTypes = {"centroid_pca","voxel_pca","weighted_pca","weighted_som"}; 
 	
 	private float[] coordImage;
 	private int[] transImage;
 	
 	// som parameters
 	private int somDim = 3;
-	private int somSize = 20;
+	private int somSize = 15;
 	private int learningTime = 1000;
-	private int totalTime = 5000;
+	private int totalTime = 2000;
 	
 	// numerical quantities
 	private static final	float	INVSQRT2 = (float)(1.0/FastMath.sqrt(2.0));
@@ -70,6 +70,7 @@ public class IntrinsicCoordinates {
 	public void execute(){
 	    if (systemParam.equals("centroid_pca")) centroidPCA();
 	    else if (systemParam.equals("weighted_pca")) weightedPCA();
+	    else if (systemParam.equals("weighted_som")) weightedSOM();
 	    else voxelPCA();
 	}
 	
@@ -379,11 +380,17 @@ public class IntrinsicCoordinates {
                 }
             }
 	    }
+	    double maxweight = 0.0;
         for (int lb=1;lb<nlb;lb++) {
             weight[0] += weight[lb];
+            //weight[lb] = 1.0/weight[lb]/(nlb-1.0);
+            // probabilities closer to 1 are nicer for the algorithm
             weight[lb] = 1.0/weight[lb]/(nlb-1.0);
+            if (weight[lb]>maxweight) maxweight = weight[lb];
         }
-        
+        for (int lb=1;lb<nlb;lb++) {
+            weight[lb] /= maxweight;
+        }
         // 2. reformat the data points and probas
         int npt = (int)weight[0];
 	    float[][] data = new float[npt][3];
@@ -407,7 +414,7 @@ public class IntrinsicCoordinates {
 	    algorithm.run_som3D();
 
 		// build the corresponding coordinate system
-		float[][] mapping = algorithm.mapSomOnData3D();
+		float[][] mapping = algorithm.interpolateSomOnData3D();
 		coordImage = new float[3*nxyz];
 		pt=0;
 	    for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
@@ -423,9 +430,6 @@ public class IntrinsicCoordinates {
 		System.out.println("som output");
 		// output: warp som grid onto surface space
 		float[][] som = algorithm.getSomWeights();
-		int nx = somSize;
-		int ny = somSize;
-		int nz = somSize;
 
 		/*
 		System.out.println("som points: "+nx*ny*nz);
@@ -493,15 +497,17 @@ public class IntrinsicCoordinates {
 		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
 		    int xyz = x+nx*y+nx*ny*z;
 		    
-		    float xc = somSize*x/nx;
-		    float yc = somSize*y/ny;
-		    float zc = somSize*z/nz;
+		    float xc = somSize*(float)x/nx;
+		    float yc = somSize*(float)y/ny;
+		    float zc = somSize*(float)z/nz;
 		    
 		    float xi = ImageInterpolation.linearClosestInterpolation(som[X], xc,yc,zc, somSize,somSize,somSize);
 		    float yi = ImageInterpolation.linearClosestInterpolation(som[Y], xc,yc,zc, somSize,somSize,somSize);
 		    float zi = ImageInterpolation.linearClosestInterpolation(som[Z], xc,yc,zc, somSize,somSize,somSize);
 		    
-		    transImage[xyz] = ImageInterpolation.nearestNeighborClosestInterpolation(labelImage, xi,yi,zi, nx,ny,nz);
-		}	    
+		    transImage[xyz] = ImageInterpolation.nearestNeighborInterpolation(labelImage, 0, xi,yi,zi, nx,ny,nz);
+		    //transImage[xyz] = (int)Numerics.min(xi,yi,zi);
+		}
+	    
 	}
 }
