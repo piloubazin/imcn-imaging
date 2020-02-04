@@ -27,10 +27,9 @@ public class IntrinsicCoordinates {
 	private int[] transImage;
 	
 	// som parameters
-	private int somDim = 3;
-	private int somSize = 15;
+	private int somSize = 10;
 	private int learningTime = 1000;
-	private int totalTime = 2000;
+	private int totalTime = 5000;
 	
 	// numerical quantities
 	private static final	float	INVSQRT2 = (float)(1.0/FastMath.sqrt(2.0));
@@ -52,7 +51,6 @@ public class IntrinsicCoordinates {
 	public final void setLabelImage(int[] val) { labelImage = val; }
 	public final void setSystemType(String val) { systemParam = val; }
 	
-	public final void setSomDimension(int val) { somDim = val; }
 	public final void setSomSize(int val) { somSize = val; }
 	public final void setLearningTime(int val) { learningTime = val; }
 	public final void setTotalTime(int val) { totalTime = val; }
@@ -71,6 +69,7 @@ public class IntrinsicCoordinates {
 	    if (systemParam.equals("centroid_pca")) centroidPCA();
 	    else if (systemParam.equals("weighted_pca")) weightedPCA();
 	    else if (systemParam.equals("weighted_som")) weightedSOM();
+	    else if (systemParam.equals("weighted_som2d")) weightedSOM2D();
 	    else voxelPCA();
 	}
 	
@@ -410,7 +409,7 @@ public class IntrinsicCoordinates {
             }
         }
 	    
-	    BasicSom algorithm = new BasicSom(data, proba, null, npt, 3, somDim, somSize, learningTime, totalTime);
+	    BasicSom algorithm = new BasicSom(data, proba, null, npt, 3, 3, somSize, learningTime, totalTime);
 	    algorithm.run_som3D();
 
 		// build the corresponding coordinate system
@@ -492,8 +491,10 @@ public class IntrinsicCoordinates {
 		}
 		System.out.println("done");
 		*/
+		/*
 		// map the data onto it
 		transImage = new int[nxyz];
+		
 		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
 		    int xyz = x+nx*y+nx*ny*z;
 		    
@@ -501,13 +502,189 @@ public class IntrinsicCoordinates {
 		    float yc = somSize*(float)y/ny;
 		    float zc = somSize*(float)z/nz;
 		    
-		    float xi = ImageInterpolation.linearClosestInterpolation(som[X], xc,yc,zc, somSize,somSize,somSize);
-		    float yi = ImageInterpolation.linearClosestInterpolation(som[Y], xc,yc,zc, somSize,somSize,somSize);
-		    float zi = ImageInterpolation.linearClosestInterpolation(som[Z], xc,yc,zc, somSize,somSize,somSize);
+		    float xi = ImageInterpolation.linearInterpolation(som[X], 0, xc,yc,zc, somSize,somSize,somSize);
+		    float yi = ImageInterpolation.linearInterpolation(som[Y], 0, xc,yc,zc, somSize,somSize,somSize);
+		    float zi = ImageInterpolation.linearInterpolation(som[Z], 0, xc,yc,zc, somSize,somSize,somSize);
 		    
 		    transImage[xyz] = ImageInterpolation.nearestNeighborInterpolation(labelImage, 0, xi,yi,zi, nx,ny,nz);
 		    //transImage[xyz] = (int)Numerics.min(xi,yi,zi);
-		}
+		}*/
+	    // or rather show the SOM points (for testing?)
+	    for (int n=0;n<somSize*somSize*somSize;n++) {
+	        int xs = Numerics.floor(som[X][n]);
+	        int ys = Numerics.floor(som[Y][n]);
+	        int zs = Numerics.floor(som[Z][n]);
+	        int xyzs = xs+nx*ys+nx*ny*zs;
+	        transImage[xyzs] = labelImage[xyzs];
+	        transImage[xyzs+1] = labelImage[xyzs];
+	        transImage[xyzs+nx] = labelImage[xyzs];
+	        transImage[xyzs+nx*ny] = labelImage[xyzs];
+	        transImage[xyzs+1+nx] = labelImage[xyzs];
+	        transImage[xyzs+nx+nx*ny] = labelImage[xyzs];
+	        transImage[xyzs+nx*ny+1] = labelImage[xyzs];
+	        transImage[xyzs+1+nx+nx*ny] = labelImage[xyzs];
+	    }
+	}
+	private final void weightedSOM2D() {
+	    // 1. estimate volumes for weighting
+	    int nlb = ObjectLabeling.countLabels(labelImage, nx, ny, nz);
+	    int[] lbl = ObjectLabeling.listOrderedLabels(labelImage, nx, ny, nz);
+	    System.out.println("labels: "+nlb);
+		
+	    double[] weight = new double[nlb];
+	    for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+            int xyz = x+nx*y+nx*ny*z;
+            if (labelImage[xyz]>lbl[0]) {
+                for (int lb=1;lb<nlb;lb++) if (labelImage[xyz]==lbl[lb]) {
+                    weight[lb]++;
+                    lb = nlb;
+                }
+            }
+	    }
+	    double maxweight = 0.0;
+        for (int lb=1;lb<nlb;lb++) {
+            weight[0] += weight[lb];
+            //weight[lb] = 1.0/weight[lb]/(nlb-1.0);
+            // probabilities closer to 1 are nicer for the algorithm
+            weight[lb] = 1.0/weight[lb]/(nlb-1.0);
+            if (weight[lb]>maxweight) maxweight = weight[lb];
+        }
+        for (int lb=1;lb<nlb;lb++) {
+            weight[lb] /= maxweight;
+        }
+        // 2. reformat the data points and probas
+        int npt = (int)weight[0];
+	    float[][] data = new float[npt][3];
+	    float[] proba = new float[npt];
+	    int pt=0;
+	    for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+	        int xyz = x+nx*y+nx*ny*z;
+	        if (labelImage[xyz]>lbl[0]) {
+                for (int lb=1;lb<nlb;lb++) if (labelImage[xyz]==lbl[lb]) {
+                    data[pt][0] = x;
+                    data[pt][1] = y;
+                    data[pt][2] = z;
+                    proba[pt] = (float)weight[lb];
+                    pt++;
+                    lb = nlb;
+                }
+            }
+        }
 	    
+	    BasicSom algorithm = new BasicSom(data, proba, null, npt, 3, 2, somSize, learningTime, totalTime);
+	    algorithm.run_som2D();
+
+		// build the corresponding coordinate system
+		float[][] mapping = algorithm.interpolateSomOnData2D();
+		coordImage = new float[3*nxyz];
+		pt=0;
+	    for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+	        int xyz = x+nx*y+nx*ny*z;
+	        if (labelImage[xyz]>lbl[0]) {
+                coordImage[xyz+X*nxyz] = mapping[pt][X]; 
+                coordImage[xyz+Y*nxyz] = mapping[pt][Y];
+                coordImage[xyz+Z*nxyz] = 0; 
+                pt++;
+            }
+		}
+		
+		System.out.println("som output");
+		// output: warp som grid onto surface space
+		float[][] som = algorithm.getSomWeights();
+
+		/*
+		System.out.println("som points: "+nx*ny*nz);
+		mappedSomPoints = new float[nx*ny*nz*3];
+		for (int xy=0;xy<nx*ny;xy++) {
+		     mappedSomPoints[0+3*xy] = som[0][xy];
+		     mappedSomPoints[1+3*xy] = som[1][xy];
+		     mappedSomPoints[2+3*xy] = som[2][xy];
+		}
+		
+		int ntriangles = (nx-1)*(ny-1)*(nz-1)*6;
+		System.out.println("som triangles: "+ntriangles);
+		mappedSomTriangles = new int[3*ntriangles];
+		int tr=0;
+		for (int x=0;x<nx-1;x++) {
+		     for (int y=0;y<ny-1;y++) {
+		         for (int z=0;z<nz-1;z++) {
+                     // top XY
+                     mappedSomTriangles[0+tr] = (x+0)+nx*(y+0)+nx*ny*(z+0);
+                     mappedSomTriangles[1+tr] = (x+1)+nx*(y+0)+nx*ny*(z+0);
+                     mappedSomTriangles[2+tr] = (x+0)+nx*(y+1)+nx*ny*(z+0);
+                     tr+=3;
+                     // bottom XY
+                     mappedSomTriangles[0+tr] = (x+1)+nx*(y+0)+nx*ny*(z+0);
+                     mappedSomTriangles[1+tr] = (x+0)+nx*(y+1)+nx*ny*(z+0);
+                     mappedSomTriangles[2+tr] = (x+1)+nx*(y+1)+nx*ny*(z+0);
+                     tr+=3;
+                     // top YZ
+                     mappedSomTriangles[0+tr] = (x+0)+nx*(y+0)+nx*ny*(z+0);
+                     mappedSomTriangles[1+tr] = (x+0)+nx*(y+1)+nx*ny*(z+0);
+                     mappedSomTriangles[2+tr] = (x+0)+nx*(y+0)+nx*ny*(z+1);
+                     tr+=3;
+                     // bottom YZ
+                     mappedSomTriangles[0+tr] = (x+0)+nx*(y+1)+nx*ny*(z+0);
+                     mappedSomTriangles[1+tr] = (x+0)+nx*(y+0)+nx*ny*(z+1);
+                     mappedSomTriangles[2+tr] = (x+0)+nx*(y+1)+nx*ny*(z+1);
+                     tr+=3;
+                     // top ZX
+                     mappedSomTriangles[0+tr] = (x+0)+nx*(y+0)+nx*ny*(z+0);
+                     mappedSomTriangles[1+tr] = (x+0)+nx*(y+0)+nx*ny*(z+1);
+                     mappedSomTriangles[2+tr] = (x+1)+nx*(y+0)+nx*ny*(z+0);
+                     tr+=3;
+                     // bottom ZX
+                     mappedSomTriangles[0+tr] = (x+0)+nx*(y+0)+nx*ny*(z+1);
+                     mappedSomTriangles[1+tr] = (x+1)+nx*(y+0)+nx*ny*(z+0);
+                     mappedSomTriangles[2+tr] = (x+1)+nx*(y+0)+nx*ny*(z+1);
+                     tr+=3;
+                }
+		     }
+		}
+		System.out.println("som values: "+nx*ny*nz);
+		mappedSomValues = new float[nx*ny*nz];
+		for (int x=0;x<nx;x++) {
+		    for (int y=0;y<ny;y++) {
+		        for (int z=0;z<nz;z++) {
+		            int xyz = x+nx*y+nx*ny*z;
+                    mappedSomValues[xyz] = labelImage[xyz];
+                }
+            }
+		}
+		System.out.println("done");
+		*/
+		// map the data onto it
+		transImage = new int[nxyz];
+		
+		/*
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+		    int xyz = x+nx*y+nx*ny*z;
+		    
+		    float xc = somSize*(float)x/nx;
+		    float yc = somSize*(float)y/ny;
+		    float zc = somSize*(float)z/nz;
+		    
+		    float xi = ImageInterpolation.linearInterpolation(som[X], 0, xc,yc,zc, somSize,somSize,somSize);
+		    float yi = ImageInterpolation.linearInterpolation(som[Y], 0, xc,yc,zc, somSize,somSize,somSize);
+		    float zi = ImageInterpolation.linearInterpolation(som[Z], 0, xc,yc,zc, somSize,somSize,somSize);
+		    
+		    transImage[xyz] = ImageInterpolation.nearestNeighborInterpolation(labelImage, 0, xi,yi,zi, nx,ny,nz);
+		    //transImage[xyz] = (int)Numerics.min(xi,yi,zi);
+		}*/
+	    // or rather show the SOM points (for testing?)
+	    for (int n=0;n<somSize*somSize;n++) {
+	        int xs = Numerics.floor(som[X][n]);
+	        int ys = Numerics.floor(som[Y][n]);
+	        int zs = Numerics.floor(som[Z][n]);
+	        int xyzs = xs+nx*ys+nx*ny*zs;
+	        transImage[xyzs] = labelImage[xyzs];
+	        transImage[xyzs+1] = labelImage[xyzs];
+	        transImage[xyzs+nx] = labelImage[xyzs];
+	        transImage[xyzs+nx*ny] = labelImage[xyzs];
+	        transImage[xyzs+1+nx] = labelImage[xyzs];
+	        transImage[xyzs+nx+nx*ny] = labelImage[xyzs];
+	        transImage[xyzs+nx*ny+1] = labelImage[xyzs];
+	        transImage[xyzs+1+nx+nx*ny] = labelImage[xyzs];
+	    }
 	}
 }

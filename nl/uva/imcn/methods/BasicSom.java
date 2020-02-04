@@ -85,15 +85,21 @@ public class BasicSom {
 		}
 		
 		// build a circular lattice
+		int nkept = 0;
 		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
-		    if ( (x-nx/2)*(x-nx/2)+(y-ny/2)*(y-ny/2)+(z-nz/2)*(z-nz/2) < (nx+1)*(nx+1)/4.0f) {
+		    if ( (x-nx/2)*(x-nx/2)+(y-ny/2)*(y-ny/2)+(z-nz/2)*(z-nz/2) < (nx-1)*(nx-1)/4.0f) {
 		        lattice[x+nx*y+nx*ny*z] = true;
+		        nkept++;
 		    } else {
 		        lattice[x+nx*y+nx*ny*z] = false;
 		    }
 		}    
+		// adjust iterations to reflect the SOM size
+		tlearn = nkept;
+		iter = 5*tlearn;
 		
 		if (debug) System.out.print("SOM:initialisation\n");
+		if (debug) System.out.print(nkept+" points, adjusting iterations to: "+tlearn+", "+iter+"\n");
 	}
 
 	/** clean-up: destroy membership and centroid arrays */
@@ -133,24 +139,21 @@ public class BasicSom {
 	}
 	
 	public final float[][] interpolateSomOnData2D() {
-	    float[][] map = new float[ndata][3];
+	    float[][] map = new float[ndata][2];
 	    double[] distances = new double[3];
 	    int[] nodes = new int[3];
 	    for (int n=0;n<ndata;n++) if (mask[n]) {
 	        findClosestNodes(data[n], distances, nodes, 3);
 	        float mapweight = 0.0f;
 	        for (int b=0;b<3;b++) {
-                double z0 = Numerics.floor(nodes[b]/(nx*ny));
-                double y0 = Numerics.floor((nodes[b]-nx*ny*z0)/nx);
-                double x0 = nodes[b] - z0*nx*ny - y0*nx;
+                double y0 = Numerics.floor(nodes[b]/nx);
+                double x0 = nodes[b] - y0*nx;
                 map[n][0] += (float)(x0/(nx-1.0)/distances[b]);
                 map[n][1] += (float)(y0/(ny-1.0)/distances[b]);
-                map[n][2] += (float)(z0/(nz-1.0)/distances[b]);
                 mapweight += (float)(1.0/distances[b]);
             }
             map[n][0] /= mapweight;
             map[n][1] /= mapweight;
-            map[n][2] /= mapweight;
 	    }
 	    return map;
 	}
