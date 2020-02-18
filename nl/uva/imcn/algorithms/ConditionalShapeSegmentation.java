@@ -1293,6 +1293,474 @@ public class ConditionalShapeSegmentation {
 		sklImages = null;
 	}
 
+	public final float updateAtlasPriors(float curr, float weight) {
+	    nx = nax; ny = nay; nz = naz; nxyz = naxyz;
+	    rx = rax; ry = ray; rz = raz;
+	    
+	    float[][][] levelsets = null; 
+	    
+	    // not correct: explicitly build the levelset of the background first, then crop it
+	    if (modelBackground) {
+            // adding the background: building a ring around the structures of interest
+            // with also a sharp decay to the boundary
+            levelsets = new float[1][nobj][];
+            float[] background = new float[nxyz];
+            boolean[] bgmask = new boolean[nxyz];
+            for (int xyz=0;xyz<nxyz;xyz++) bgmask[xyz] = true;
+            boundary = boundary/Numerics.max(rx,ry,rz);
+            
+            for (int sub=0;sub<nsub;sub++) {
+                for (int xyz=0;xyz<nxyz;xyz++) {
+                    float mindist = boundary;
+                    for (int obj=0;obj<nobj-1;obj++) {
+                        if (lvlImages[sub][obj][xyz]<mindist) mindist = lvlImages[sub][obj][xyz];
+                    }
+                    background[xyz] = -mindist;
+                }
+                InflateGdm gdm = new InflateGdm(background, nx, ny, nz, rx, ry, rz, bgmask, 0.4f, 0.4f, "no", null);
+                gdm.evolveNarrowBand(0, 1.0f);
+                levelsets[sub][0] = gdm.getLevelSet();
+                for (int obj=1;obj<nobj;obj++) {
+                    levelsets[sub][obj] = lvlImages[sub][obj-1];
+                }
+            }
+            //nobj = nobj+1;
+            lvlImages = null;
+        } else {
+            levelsets = lvlImages;
+		}
+		// idmap, mask from current priors
+		
+        // adapt number of kept values?
+        
+		System.out.println("update joint conditional shape priors");
+		float[][] updateProbas = new float[nbest][ndata]; 
+		int[][] updateLabels = new int[nbest][ndata];
+		
+		int ctr = Numerics.floor(nsub/2);
+        int dev = Numerics.floor(nsub/4);
+                    
+		double[] val = new double[nsub];
+		//double iqrsum=0, iqrden=0;
+		double stdsum=0, stdden=0;
+		for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
+		    double[][] priors = new double[nobj][nobj];
+            for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
+                
+                double mean = 0.0;
+                for (int sub=0;sub<nsub;sub++) {
+                    mean += Numerics.max(0.0, levelsets[sub][obj1][xyz]-deltaOut, levelsets[sub][obj2][xyz]-deltaIn);
+                }
+                mean /= nsub;
+                double var = 0.0;
+                for (int sub=0;sub<nsub;sub++) {
+                    var += Numerics.square(mean-Numerics.max(0.0, levelsets[sub][obj1][xyz]-deltaOut, levelsets[sub][obj2][xyz]-deltaIn));
+                }
+                var = FastMath.sqrt(var/nsub);
+                
+                stdsum += var;
+                stdden ++;
+                
+                double sigma2 = var+Numerics.max(deltaOut, deltaIn, 1.0);
+                sigma2 *= sigma2;
+                // when scaling by the variance, it penalizes more strongly variable regions -> they get a weaker prior
+                // maybe a good thing? not entirely sure...
+                if (shiftPriors)
+                    priors[obj1][obj2] = FastMath.exp( -0.5*Numerics.square(Numerics.max(0.0,mean-var))/sigma2 );
+                else
+                    priors[obj1][obj2] = FastMath.exp( -0.5*mean*mean/sigma2 );
+                
+                if (scalePriors)
+                    priors[obj1][obj2] = 1.0/FastMath.sqrt(2.0*FastMath.PI*sigma2)*priors[obj1][obj2];
+ 			}
+            for (int best=0;best<nbest;best++) {
+                int best1=0;
+				int best2=0;
+					
+                for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
+                    if (priors[obj1][obj2]>priors[best1][best2]) {
+						best1 = obj1;
+						best2 = obj2;
+					}
+				}
+				// check if best is zero: give null label in that case
+				if (priors[best1][best2]>0) {
+                    // sub optimal labeling, but easy to read
+                    updateLabels[best][idmap[xyz]] = 100*(best1+1)+(best2+1);
+                    updateProbas[best][idmap[xyz]] = (float)priors[best1][best2];
+                } else {
+                    for (int b=best;b<nbest;b++) {
+                        updateLabels[b][idmap[xyz]] = 0;
+                        updateProbas[b][idmap[xyz]] = 0.0f;
+                    }
+                    best = nbest;
+                }                    
+                // remove best value
+                priors[best1][best2] = 0.0;
+ 		    }
+		}
+		//System.out.println("mean spatial iqr: "+(iqrsum/iqrden));
+		System.out.println("mean spatial stdev: "+(stdsum/stdden));
+		// levelsets are now discarded...
+		// not yet! 
+		//levelsets = null;
+		
+		// rescale top % in each shape and intensity priors
+		float shapeMax = 1.0f;
+		if (rescaleProbas){
+            Percentile measure = new Percentile();
+            val = new double[ndata];
+            for (int id=0;id<ndata;id++) val[id] = updateProbas[0][id];
+            shapeMax = (float)measure.evaluate(val, top);
+            System.out.println("top "+top+"% shape probability: "+shapeMax);
+            for (int id=0;id<ndata;id++) for (int best=0;best<nbest;best++) {
+                updateProbas[best][id] = (float)Numerics.min(top/100.0*updateProbas[best][id]/shapeMax, 1.0f);
+            }		
+		}
+		
+		// combine with previous version
+		for (int id=0;id<ndata;id++) for (int best=0;best<nbest;best++) {
+		    // always update, even when not matching
+		    spatialProbas[best][id] *= curr/(curr+weight);
+            
+            int obj1 = Numerics.floor(spatialLabels[best][id]/100.0f)-1;
+            int obj2 = Numerics.round(spatialLabels[best][id]-100*(obj1+1)-1);
+
+            for (int ubest=0;ubest<nbest;ubest++) {
+                int upd1 = Numerics.floor(updateLabels[ubest][id]/100.0f)-1;
+                int upd2 = Numerics.round(updateLabels[ubest][id]-100*(upd1+1)-1);
+
+                if (upd1==obj1 && upd2==obj2) {
+                    spatialProbas[best][id] += weight*updateProbas[ubest][id]/(curr+weight);
+                    ubest=nbest;
+                }
+            }
+        }
+                
+		
+		System.out.println("update joint conditional intensity priors");
+		
+		float[][][] contrasts = intensImages;
+		float[][] medc = new float[nc][ndata];
+		float[][] iqrc = new float[nc][ndata];
+		
+		System.out.println("1. estimate subjects distribution");
+		double[] cntsum = new double[nc];
+		double[] cntden = new double[nc];
+		val = new double[nsub];
+		for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
+		    for (int c=0;c<nc;c++) {
+                for  (int sub=0;sub<nsub;sub++) {
+                    val[sub] = contrasts[sub][c][xyz];
+                }
+                Numerics.sort(val);
+                double med, iqr;
+                if (nsub%2==0) {
+                    med = 0.5*(val[ctr-1]+val[ctr]);
+                    iqr = val[ctr+dev] - val[ctr-1-dev];
+                } else {
+                    med = val[ctr];
+                    iqr = val[ctr+dev] - val[ctr-dev];
+                }                   
+                medc[c][idmap[xyz]] = (float)med;
+                iqrc[c][idmap[xyz]] = (float)iqr;
+                
+                cntsum[c] += iqr;
+                cntden[c]++;
+            }
+        }
+        for (int c=0;c<nc;c++) {
+            System.out.println("mean iqr (contrast "+c+"): "+(cntsum[c]/cntden[c]));
+		}
+		
+		System.out.println("2. compute conditional maps");
+		
+		System.out.println("(use histograms for intensities)");
+        
+        // min, max: percentile on median (to avoid spreading the values to outliers)
+        // same min, max for all object pairs => needed for fair comparison 
+        // (or normalize by volume, i.e. taking width into account
+        for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
+            System.out.print("\n("+(obj1+1)+" | "+(obj2+1)+"): ");
+            for (int c=0;c<nc;c++) {
+                boolean existsPair = false;
+                // use median intensities to estimate [min,max]
+                for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
+                    double med = medc[c][idmap[xyz]];
+                    double iqr = iqrc[c][idmap[xyz]];
+                    // assuming here that iqr==0 means masked regions
+                    if (iqr>0) { 
+                        // look only among non-zero priors for each region
+                        for (int best=0;best<nbest;best++) {
+                            if (spatialLabels[best][idmap[xyz]]==100*(obj1+1)+(obj2+1)) {
+                                // found value: proceeed
+                                if (med<condmin[c][obj1][obj2]) condmin[c][obj1][obj2] = med;
+                                if (med>condmax[c][obj1][obj2]) condmax[c][obj1][obj2] = med;
+                                if (condmin[c][obj1][obj2]!=condmax[c][obj1][obj2]) existsPair = true;
+                            }
+                        }
+                    }
+                }
+                // only update if new pair found
+                if (existsPair && !condpair[c][obj1][obj2]) {
+                    condpair[c][obj1][obj2] = true;
+                    System.out.print("["+condmin[c][obj1][obj2]+" , "+condmax[c][obj1][obj2]+"]    ");
+                }
+            }
+        }
+        // take the global min,max to make histograms comparable
+        for (int c=0;c<nc;c++) {
+            double cmin = condmin[c][0][0];
+            double cmax = condmax[c][0][0];
+            for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
+                if (condpair[c][obj1][obj2]) {
+                    if (condmin[c][obj1][obj2]<cmin) cmin = condmin[c][obj1][obj2];
+                    if (condmax[c][obj1][obj2]>cmax) cmax = condmax[c][obj1][obj2];
+                }
+            }
+            for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
+                condmin[c][obj1][obj2] = cmin;
+                condmax[c][obj1][obj2] = cmax;
+            }
+        }
+        double[][][][] updatehistogram = new double[nc][nobj][nobj][nbins];
+		for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
+            for (int c=0;c<nc;c++) {
+                if (condpair[c][obj1][obj2]) {
+                    for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
+                        double med = medc[c][idmap[xyz]];
+                        double iqr = iqrc[c][idmap[xyz]];
+                        // assuming here that iqr==0 means masked regions
+                        if (iqr>0) { 
+                            // look for non-zero priors
+                            for (int best=0;best<nbest;best++) {
+                                if (spatialLabels[best][idmap[xyz]]==100*(obj1+1)+(obj2+1)) {
+                                    // found value: proceeed
+                                    for (int sub=0;sub<nsub;sub++) {
+                                        // adds uncertainties from mismatch between subject intensities and mean shape
+                                        /*
+                                        double psub = spatialProbas[best][idmap[xyz]]*1.0/FastMath.sqrt(2.0*FastMath.PI*1.349*iqr*1.349*iqr)
+                                                           *FastMath.exp( -0.5*(contrasts[sub][c][xyz]-med)*(contrasts[sub][c][xyz]-med)/(1.349*iqr*1.349*iqr) );
+                                        */
+                                        double ldist = Numerics.max(levelsets[sub][obj1][xyz]-deltaOut, levelsets[sub][obj2][xyz]-deltaIn, 0.0);
+                                        double ldelta = Numerics.max(deltaOut, deltaIn, 1.0);
+                                        double pshape = FastMath.exp(-0.5*(ldist*ldist)/(ldelta*ldelta));
+                                        double psub = pshape*1.0/FastMath.sqrt(2.0*FastMath.PI*1.349*iqr*1.349*iqr)
+                                                           *FastMath.exp( -0.5*(contrasts[sub][c][xyz]-med)*(contrasts[sub][c][xyz]-med)/(1.349*iqr*1.349*iqr) );
+                                        // add to the mean
+                                        int bin = Numerics.bounded(Numerics.ceil( (contrasts[sub][c][xyz]-condmin[c][obj1][obj2])/(condmax[c][obj1][obj2]-condmin[c][obj1][obj2])*nbins)-1, 0, nbins-1);
+                                        updatehistogram[c][obj1][obj2][bin] += psub;
+                                    }
+                                    best=nbest;
+                                }
+                            }
+                        }
+                    }
+                    // smooth histograms to avoid sharp edge effects
+                    double var = 1.0*1.0;
+                    double[] tmphist = new double[nbins];
+                    for (int bin1=0;bin1<nbins;bin1++) {
+                        for (int bin2=0;bin2<nbins;bin2++) {
+                            tmphist[bin1] += updatehistogram[c][obj1][obj2][bin2]*FastMath.exp(-0.5*(bin1-bin2)*(bin1-bin2)/var);
+                        }
+                    }
+                    for (int bin=0;bin<nbins;bin++) updatehistogram[c][obj1][obj2][bin] = tmphist[bin];
+                    
+                    // normalize: sum over count x spread = 1
+                    double sum = 0.0;
+                    for (int bin=0;bin<nbins;bin++) sum += updatehistogram[c][obj1][obj2][bin];   
+                    //for (int bin=0;bin<nbins;bin++) condhistogram[c][obj1][obj2][bin] /= sum*(condmax[c][obj1][obj2]-condmin[c][obj1][obj2]);   
+                    for (int bin=0;bin<nbins;bin++) updatehistogram[c][obj1][obj2][bin] /= sum;   
+                } else {
+                    for (int bin=0;bin<nbins;bin++) updatehistogram[c][obj1][obj2][bin] = 0;   
+                }
+            }
+        }
+		for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
+            for (int c=0;c<nc;c++) for (int bin=0;bin<nbins;bin++)  {
+                condhistogram[c][obj1][obj2][bin] = (curr*condhistogram[c][obj1][obj2][bin] + weight*updatehistogram[c][obj1][obj2][bin])/(curr+weight);
+            }
+        }
+                
+        // compute volume mean, stdv of each structure
+        System.out.println("Volume statistics");
+        float[] updateVolMean = new float[nobj];
+        float[] updateVolStdv = new float[nobj];
+        for (int obj=0;obj<nobj;obj++) {
+            float[] vols = new float[nsub];
+            for (int sub=0;sub<nsub;sub++) {
+                vols[sub] = 0.0f;
+                for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
+                    if (levelsets[sub][obj][xyz]<0) {
+                        vols[sub]+=rx*ry*rz;
+                    }
+                }
+                updateVolMean[obj] += FastMath.log(Numerics.max(1.0,vols[sub]))/nsub;
+            }
+            for (int sub=0;sub<nsub;sub++) {
+                updateVolStdv[obj] += Numerics.square(FastMath.log(Numerics.max(1.0,vols[sub]))-updateVolMean[obj])/(nsub-1.0f);
+            }
+            updateVolStdv[obj] = (float)FastMath.sqrt(updateVolStdv[obj]);
+            System.out.println(obj+" : "+FastMath.exp(updateVolMean[obj])
+                                   +" ["+FastMath.exp(updateVolMean[obj]-updateVolStdv[obj])
+                                   +", "+FastMath.exp(updateVolMean[obj]+updateVolStdv[obj]));
+            
+            // update main values
+            float delta = logVolMean[obj]-updateVolMean[obj];
+            logVolMean[obj] = (curr*logVolMean[obj]+weight*updateVolMean[obj])/(curr+weight);
+            logVolStdv[obj] = (curr-1.0f)*logVolStdv[obj]*logVolStdv[obj] + weight*updateVolStdv[obj]*updateVolStdv[obj] + curr*weight/(curr+weight)*delta*delta;
+            logVolStdv[obj] = (float)FastMath.sqrt( logVolStdv[obj]/(curr+weight-1.0) );
+        }        
+        // same for all interfaces
+        System.out.println("Conditional volume statistics");
+        float[][] updateVolMean2 = new float[nobj][nobj];
+        float[][] updateVolStdv2 = new float[nobj][nobj];
+        float[][][] vols = new float[nsub][nobj][nobj];
+        for (int sub=0;sub<nsub;sub++) {
+            for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
+                double best = INF;
+                int best1 = -1;
+                int best2 = -1;
+                for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
+                    if (Numerics.max(0.0, levelsets[sub][obj1][xyz]-deltaOut, levelsets[sub][obj2][xyz]-deltaIn)<best) {
+                        best = Numerics.max(0.0, levelsets[sub][obj1][xyz]-deltaOut, levelsets[sub][obj2][xyz]-deltaIn);
+                        best1 = obj1;
+                        best2 = obj2;
+                    }
+                }
+                vols[sub][best1][best2]+=rx*ry*rz;
+            }
+            for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
+                updateVolMean2[obj1][obj2] += FastMath.log(Numerics.max(1.0,vols[sub][obj1][obj2]))/nsub;
+            }
+        }
+        for (int sub=0;sub<nsub;sub++) {
+            for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
+                updateVolStdv2[obj1][obj2] += Numerics.square(FastMath.log(Numerics.max(1.0,vols[sub][obj1][obj2]))-updateVolMean2[obj1][obj2])/(nsub-1.0f);
+            }
+        }
+        for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
+            updateVolStdv2[obj1][obj2] = (float)FastMath.sqrt(updateVolStdv2[obj1][obj2]);
+            if (logVolMean2[obj1][obj2]>0) {
+                System.out.println(obj1+"|"+obj2+" : "+FastMath.exp(updateVolMean2[obj1][obj2])
+                                                 +" ["+FastMath.exp(updateVolMean2[obj1][obj2]-updateVolStdv2[obj1][obj2])
+                                                 +", "+FastMath.exp(updateVolMean2[obj1][obj2]+updateVolStdv2[obj1][obj2])+"]");
+            }
+            
+            // update main values
+            float delta = logVolMean2[obj1][obj2]-updateVolMean2[obj1][obj2];
+            logVolMean2[obj1][obj2] = (curr*logVolMean2[obj1][obj2]+weight*updateVolMean2[obj1][obj2])/(curr+weight);
+            logVolStdv2[obj1][obj2] = (curr-1.0f)*logVolStdv2[obj1][obj2]*logVolStdv2[obj1][obj2] + weight*updateVolStdv2[obj1][obj2]*updateVolStdv2[obj1][obj2] + curr*weight/(curr+weight)*delta*delta;
+            logVolStdv2[obj1][obj2] = (float)FastMath.sqrt( logVolStdv2[obj1][obj2]/(curr+weight-1.0) );
+        }
+		// at this point the atlas data is not used anymore
+		levelsets = null;
+		contrasts = null;
+		lvlImages = null;
+		intensImages = null;
+		System.out.println("\ndone");
+		
+		return shapeMax;
+	}
+	
+	public final void updateSkeletonPriors(float scale, float curr, float weight) {
+	    
+		System.out.println("compute skeleton priors");
+
+		float[][] updateProbas = new float[nskel][ndata]; 
+		int[][] updateLabels = new int[nskel][ndata];
+		double stdsum=0,stdden=0;
+		for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
+		    double[] priors = new double[nobj];
+            for (int obj=1;obj<nobj;obj++) {
+                //priors[obj1][obj2] = FastMath.exp( -0.5*med*med/(1.349*iqr*1.349*iqr) );
+                // alternative idea: use a combination of mean and stdev as distance basis
+                // -> take into account uncertainty better
+                double mean = 0.0;
+                for (int sub=0;sub<nsub;sub++) {
+                    mean += Numerics.max(0.0, sklImages[sub][obj-1][xyz]);
+                }
+                mean /= nsub;
+                double var = 0.0;
+                for (int sub=0;sub<nsub;sub++) {
+                    var += Numerics.square(mean-Numerics.max(0.0, sklImages[sub][obj-1][xyz]));
+                }
+                var = FastMath.sqrt(var/nsub);
+                
+                stdsum += var;
+                stdden ++;
+                
+                double sigma2 = var+Numerics.max(deltaOut, deltaIn, 1.0);
+                sigma2 *= sigma2;
+                // when scaling by the variance, it penalizes more strongly variable regions -> they get a weaker prior
+                // maybe a good thing? not entirely sure...
+                if (shiftPriors)
+                    priors[obj] = FastMath.exp( -0.5*Numerics.square(Numerics.max(0.0,mean-var))/sigma2 );
+                else
+                    priors[obj] = FastMath.exp( -0.5*mean*mean/sigma2 );
+                
+                if (scalePriors)
+                    priors[obj] = 1.0/FastMath.sqrt(2.0*FastMath.PI*sigma2)*priors[obj];
+ 			}
+            for (int best=0;best<nskel;best++) {
+                int best1=0;
+					
+                for (int obj=1;obj<nobj;obj++) {
+                    if (priors[obj]>priors[best1]) {
+						best1 = obj;
+					}
+				}
+				// check if best is zero: give null label in that case
+				if (priors[best1]>0) {
+                    // sub optimal labeling, but easy to read
+                    updateLabels[best][idmap[xyz]] = 101*(best1+1);
+                    updateProbas[best][idmap[xyz]] = (float)priors[best1];
+                } else {
+                    for (int b=best;b<nskel;b++) {
+                        updateLabels[b][idmap[xyz]] = 0;
+                        updateProbas[b][idmap[xyz]] = 0.0f;
+                    }
+                    best = nbest;
+                }                    
+                // remove best value
+                priors[best1] = 0.0;
+ 		    }
+		}
+		
+		// rescale top % in each shape and intensity priors
+		if (rescaleProbas){
+            //Percentile measure = new Percentile();
+            //double[] val = new double[ndata];
+            //for (int id=0;id<ndata;id++) val[id] = skeletonProbas[0][id];
+            //float skelMax = (float)measure.evaluate(val, top);
+            //System.out.println("top "+top+"% skeleton probability: "+skelMax);
+            System.out.println("rescale with shape probability scale: "+scale);
+            for (int id=0;id<ndata;id++) for (int best=0;best<nskel;best++) {
+                updateProbas[best][id] = (float)Numerics.min(top/100.0*updateProbas[best][id]/scale, 1.0f);
+            }		
+		}
+		sklImages = null;
+		
+		// combine with previous version
+		for (int id=0;id<ndata;id++) for (int best=0;best<nbest;best++) {
+		    // always update, even when not matching
+		    skeletonProbas[best][id] *= curr/(curr+weight);
+            
+            int obj = Numerics.floor(skeletonLabels[best][id]/100.0f)-1;
+            
+            for (int ubest=0;ubest<nbest;ubest++) {
+                int upd = Numerics.floor(updateLabels[ubest][id]/100.0f)-1;
+                
+                if (upd==obj) {
+                    skeletonProbas[best][id] += weight*updateProbas[ubest][id]/(curr+weight);
+                    ubest=nbest;
+                }
+            }
+        }
+                
+		
+	}
+
 	public final void estimateTarget() {
 		
 		// compute the median of stdevs from atlas -> scale for image distances
