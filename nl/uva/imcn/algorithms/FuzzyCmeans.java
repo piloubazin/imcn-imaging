@@ -188,77 +188,141 @@ public class FuzzyCmeans {
         
         distance = 0.0f;
 
-        for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
-            int xyz = x+nx*y+nx*ny*z;
-			if ( mask[xyz] ) {
-				den = 0;
-				// remember the previous values
-				for (int k=0;k<clusters;k++) 
-					prev[k] = mems[k][xyz];
-
-				for (int k=0;k<clusters;k++) {
-					
-					// data term
-					num = (image[xyz]-centroids[k])*(image[xyz]-centroids[k])/((Imax-Imin)*(Imax-Imin));
-					
-					// spatial smoothing
-					if (smoothing > 0.0f) { 
-						ngb = 0.0f;  
-						neighbors = 0.0f;
-						// case by case	: X+
-						if (mask[xyz+1]) for (int m=0;m<clusters;m++) if (m!=k) {
-							ngb += mems[m][xyz+1]*mems[m][xyz+1];
-							neighbors ++;
-						}
-						// case by case	: X-
-						if (mask[xyz-1]) for (int m=0;m<clusters;m++) if (m!=k) {
-							ngb += mems[m][xyz-1]*mems[m][xyz-1];
-							neighbors ++;
-						}
-						// case by case	: Y+
-						if (mask[xyz+nx]) for (int m=0;m<clusters;m++) if (m!=k) {
-							ngb += mems[m][xyz+nx]*mems[m][xyz+nx];
-							neighbors ++;
-						}
-						// case by case	: Y-
-						if (mask[xyz-nx]) for (int m=0;m<clusters;m++) if (m!=k) {
-							ngb += mems[m][xyz-nx]*mems[m][xyz-nx];
-							neighbors ++;
-						}
-						// case by case	: Z+
-						if (mask[xyz+nx*ny]) for (int m=0;m<clusters;m++) if (m!=k) {
-							ngb += mems[m][xyz+nx*ny]*mems[m][xyz+nx*ny];
-							neighbors ++;
-						}
-						// case by case	: Z-
-						if (mask[xyz-nx*ny]) for (int m=0;m<clusters;m++) if (m!=k) {
-							ngb += mems[m][xyz-nx*ny]*mems[m][xyz-nx*ny];
-							neighbors ++;
-						}
-						if (neighbors>0.0) num = num + smoothing*ngb/neighbors;
-					}
-					// invert the result
-					if (num>ZERO) num = 1.0f/num;
-					else num = INF;
-
-					//mems[k][x][y][z] = num;
-					mems[k][xyz] = num;
-					den += num;
-				}
-
-				// normalization
-				for (int k=0;k<clusters;k++) {
-					mems[k][xyz] = mems[k][xyz]/den;
-
-                    // compute the maximum distance
-                    dist = Math.abs(mems[k][xyz]-prev[k]);
-                    if (dist > distance) distance = dist;
+        if (nz>1) {
+            for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
+                int xyz = x+nx*y+nx*ny*z;
+                if ( mask[xyz] ) {
+                    den = 0;
+                    // remember the previous values
+                    for (int k=0;k<clusters;k++) 
+                        prev[k] = mems[k][xyz];
+    
+                    for (int k=0;k<clusters;k++) {
+                        
+                        // data term
+                        num = (image[xyz]-centroids[k])*(image[xyz]-centroids[k])/((Imax-Imin)*(Imax-Imin));
+                        
+                        // spatial smoothing
+                        if (smoothing > 0.0f) { 
+                            ngb = 0.0f;  
+                            neighbors = 0.0f;
+                            // case by case	: X+
+                            if (mask[xyz+1]) for (int m=0;m<clusters;m++) if (m!=k) {
+                                ngb += mems[m][xyz+1]*mems[m][xyz+1];
+                                neighbors ++;
+                            }
+                            // case by case	: X-
+                            if (mask[xyz-1]) for (int m=0;m<clusters;m++) if (m!=k) {
+                                ngb += mems[m][xyz-1]*mems[m][xyz-1];
+                                neighbors ++;
+                            }
+                            // case by case	: Y+
+                            if (mask[xyz+nx]) for (int m=0;m<clusters;m++) if (m!=k) {
+                                ngb += mems[m][xyz+nx]*mems[m][xyz+nx];
+                                neighbors ++;
+                            }
+                            // case by case	: Y-
+                            if (mask[xyz-nx]) for (int m=0;m<clusters;m++) if (m!=k) {
+                                ngb += mems[m][xyz-nx]*mems[m][xyz-nx];
+                                neighbors ++;
+                            }
+                            // case by case	: Z+
+                            if (mask[xyz+nx*ny]) for (int m=0;m<clusters;m++) if (m!=k) {
+                                ngb += mems[m][xyz+nx*ny]*mems[m][xyz+nx*ny];
+                                neighbors ++;
+                            }
+                            // case by case	: Z-
+                            if (mask[xyz-nx*ny]) for (int m=0;m<clusters;m++) if (m!=k) {
+                                ngb += mems[m][xyz-nx*ny]*mems[m][xyz-nx*ny];
+                                neighbors ++;
+                            }
+                            if (neighbors>0.0) num = num + smoothing*ngb/neighbors;
+                        }
+                        // invert the result
+                        if (num>ZERO) num = 1.0f/num;
+                        else num = INF;
+    
+                        //mems[k][x][y][z] = num;
+                        mems[k][xyz] = num;
+                        den += num;
+                    }
+    
+                    // normalization
+                    for (int k=0;k<clusters;k++) {
+                        mems[k][xyz] = mems[k][xyz]/den;
+    
+                        // compute the maximum distance
+                        dist = Math.abs(mems[k][xyz]-prev[k]);
+                        if (dist > distance) distance = dist;
+                    }
+                } else {
+                    for (int k=0;k<clusters;k++) 
+                        mems[k][xyz] = 0.0f;
                 }
-			} else {
-				for (int k=0;k<clusters;k++) 
-					mems[k][xyz] = 0.0f;
-			}
-		}
+            }
+        } else {
+            for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) {
+                int xyz = x+nx*y;
+                if ( mask[xyz] ) {
+                    den = 0;
+                    // remember the previous values
+                    for (int k=0;k<clusters;k++) 
+                        prev[k] = mems[k][xyz];
+    
+                    for (int k=0;k<clusters;k++) {
+                        
+                        // data term
+                        num = (image[xyz]-centroids[k])*(image[xyz]-centroids[k])/((Imax-Imin)*(Imax-Imin));
+                        
+                        // spatial smoothing
+                        if (smoothing > 0.0f) { 
+                            ngb = 0.0f;  
+                            neighbors = 0.0f;
+                            // case by case	: X+
+                            if (mask[xyz+1]) for (int m=0;m<clusters;m++) if (m!=k) {
+                                ngb += mems[m][xyz+1]*mems[m][xyz+1];
+                                neighbors ++;
+                            }
+                            // case by case	: X-
+                            if (mask[xyz-1]) for (int m=0;m<clusters;m++) if (m!=k) {
+                                ngb += mems[m][xyz-1]*mems[m][xyz-1];
+                                neighbors ++;
+                            }
+                            // case by case	: Y+
+                            if (mask[xyz+nx]) for (int m=0;m<clusters;m++) if (m!=k) {
+                                ngb += mems[m][xyz+nx]*mems[m][xyz+nx];
+                                neighbors ++;
+                            }
+                            // case by case	: Y-
+                            if (mask[xyz-nx]) for (int m=0;m<clusters;m++) if (m!=k) {
+                                ngb += mems[m][xyz-nx]*mems[m][xyz-nx];
+                                neighbors ++;
+                            }
+                            if (neighbors>0.0) num = num + smoothing*ngb/neighbors;
+                        }
+                        // invert the result
+                        if (num>ZERO) num = 1.0f/num;
+                        else num = INF;
+    
+                        //mems[k][x][y][z] = num;
+                        mems[k][xyz] = num;
+                        den += num;
+                    }
+    
+                    // normalization
+                    for (int k=0;k<clusters;k++) {
+                        mems[k][xyz] = mems[k][xyz]/den;
+    
+                        // compute the maximum distance
+                        dist = Math.abs(mems[k][xyz]-prev[k]);
+                        if (dist > distance) distance = dist;
+                    }
+                } else {
+                    for (int k=0;k<clusters;k++) 
+                        mems[k][xyz] = 0.0f;
+                }
+            }
+        }
         return distance;
     } // computeMemberships
     
@@ -272,76 +336,139 @@ public class FuzzyCmeans {
         float neighbors, ngb;
         
         distance = 0.0f;
-		for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
-			int xyz = x+nx*y+nx*ny*z;
-			if ( mask[xyz] ) {
-				den = 0;
-				// remember the previous values
-				for (int k=0;k<clusters;k++) 
-					prev[k] = mems[k][xyz];
-
-				for (int k=0;k<clusters;k++) {
-					
-					// data term
-					num = (image[xyz]-centroids[k])*(image[xyz]-centroids[k])/((Imax-Imin)*(Imax-Imin));
-					
-					// spatial smoothing
-					if (smoothing > 0.0f) { 
-						ngb = 0.0f;  
-						neighbors = 0.0f;
-						// case by case	: X+
-						if (mask[xyz+1]) for (int m=0;m<clusters;m++) if (m!=k) {
-							ngb += power.lookup(mems[m][xyz+1],fuzziness);
-							neighbors ++;
-						}
-						// case by case	: X-
-						if (mask[xyz-1]) for (int m=0;m<clusters;m++) if (m!=k) {
-							ngb += power.lookup(mems[m][xyz-1],fuzziness);
-							neighbors ++;
-						}
-						// case by case	: Y+
-						if (mask[xyz+nx]) for (int m=0;m<clusters;m++) if (m!=k) {
-							ngb += power.lookup(mems[m][xyz+nx],fuzziness);
-							neighbors ++;
-						}
-						// case by case	: Y-
-						if (mask[xyz-nx]) for (int m=0;m<clusters;m++) if (m!=k) {
-							ngb += power.lookup(mems[m][xyz-nx],fuzziness);
-							neighbors ++;
-						}
-						// case by case	: Z+
-						if (mask[xyz+nx*ny]) for (int m=0;m<clusters;m++) if (m!=k) {
-							ngb += power.lookup(mems[m][xyz+nx*ny],fuzziness);
-							neighbors ++;
-						}
-						// case by case	: Z-
-						if (mask[xyz-nx*ny]) for (int m=0;m<clusters;m++) if (m!=k) {
-							ngb += power.lookup(mems[m][xyz-nx*ny],fuzziness);
-							neighbors ++;
-						}
-						if (neighbors>0.0) num = num + smoothing*ngb/neighbors;
-					}
-					// invert the result
-					if (num>ZERO) num = (float)invpower.lookup(num,1.0f/(1.0f-fuzziness) );
-					else num = INF;
-
-					mems[k][xyz] = num;
-					den += num;
-				}
-
-				// normalization
-				for (int k=0;k<clusters;k++) {
-					mems[k][xyz] = mems[k][xyz]/den;
-
-                    // compute the maximum distance
-                    dist = Math.abs(mems[k][xyz]-prev[k]);
-                    if (dist > distance) distance = dist;
+        if (nz>1) {
+            for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
+                int xyz = x+nx*y+nx*ny*z;
+                if ( mask[xyz] ) {
+                    den = 0;
+                    // remember the previous values
+                    for (int k=0;k<clusters;k++) 
+                        prev[k] = mems[k][xyz];
+    
+                    for (int k=0;k<clusters;k++) {
+                        
+                        // data term
+                        num = (image[xyz]-centroids[k])*(image[xyz]-centroids[k])/((Imax-Imin)*(Imax-Imin));
+                        
+                        // spatial smoothing
+                        if (smoothing > 0.0f) { 
+                            ngb = 0.0f;  
+                            neighbors = 0.0f;
+                            // case by case	: X+
+                            if (mask[xyz+1]) for (int m=0;m<clusters;m++) if (m!=k) {
+                                ngb += power.lookup(mems[m][xyz+1],fuzziness);
+                                neighbors ++;
+                            }
+                            // case by case	: X-
+                            if (mask[xyz-1]) for (int m=0;m<clusters;m++) if (m!=k) {
+                                ngb += power.lookup(mems[m][xyz-1],fuzziness);
+                                neighbors ++;
+                            }
+                            // case by case	: Y+
+                            if (mask[xyz+nx]) for (int m=0;m<clusters;m++) if (m!=k) {
+                                ngb += power.lookup(mems[m][xyz+nx],fuzziness);
+                                neighbors ++;
+                            }
+                            // case by case	: Y-
+                            if (mask[xyz-nx]) for (int m=0;m<clusters;m++) if (m!=k) {
+                                ngb += power.lookup(mems[m][xyz-nx],fuzziness);
+                                neighbors ++;
+                            }
+                            // case by case	: Z+
+                            if (mask[xyz+nx*ny]) for (int m=0;m<clusters;m++) if (m!=k) {
+                                ngb += power.lookup(mems[m][xyz+nx*ny],fuzziness);
+                                neighbors ++;
+                            }
+                            // case by case	: Z-
+                            if (mask[xyz-nx*ny]) for (int m=0;m<clusters;m++) if (m!=k) {
+                                ngb += power.lookup(mems[m][xyz-nx*ny],fuzziness);
+                                neighbors ++;
+                            }
+                            if (neighbors>0.0) num = num + smoothing*ngb/neighbors;
+                        }
+                        // invert the result
+                        if (num>ZERO) num = (float)invpower.lookup(num,1.0f/(1.0f-fuzziness) );
+                        else num = INF;
+    
+                        mems[k][xyz] = num;
+                        den += num;
+                    }
+    
+                    // normalization
+                    for (int k=0;k<clusters;k++) {
+                        mems[k][xyz] = mems[k][xyz]/den;
+    
+                        // compute the maximum distance
+                        dist = Math.abs(mems[k][xyz]-prev[k]);
+                        if (dist > distance) distance = dist;
+                    }
+                } else {
+                    for (int k=0;k<clusters;k++) 
+                        mems[k][xyz] = 0.0f;
                 }
-			} else {
-				for (int k=0;k<clusters;k++) 
-					mems[k][xyz] = 0.0f;
-			}
-		}
+            }
+        } else {
+            for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) {
+                int xyz = x+nx*y;
+                if ( mask[xyz] ) {
+                    den = 0;
+                    // remember the previous values
+                    for (int k=0;k<clusters;k++) 
+                        prev[k] = mems[k][xyz];
+    
+                    for (int k=0;k<clusters;k++) {
+                        
+                        // data term
+                        num = (image[xyz]-centroids[k])*(image[xyz]-centroids[k])/((Imax-Imin)*(Imax-Imin));
+                        
+                        // spatial smoothing
+                        if (smoothing > 0.0f) { 
+                            ngb = 0.0f;  
+                            neighbors = 0.0f;
+                            // case by case	: X+
+                            if (mask[xyz+1]) for (int m=0;m<clusters;m++) if (m!=k) {
+                                ngb += power.lookup(mems[m][xyz+1],fuzziness);
+                                neighbors ++;
+                            }
+                            // case by case	: X-
+                            if (mask[xyz-1]) for (int m=0;m<clusters;m++) if (m!=k) {
+                                ngb += power.lookup(mems[m][xyz-1],fuzziness);
+                                neighbors ++;
+                            }
+                            // case by case	: Y+
+                            if (mask[xyz+nx]) for (int m=0;m<clusters;m++) if (m!=k) {
+                                ngb += power.lookup(mems[m][xyz+nx],fuzziness);
+                                neighbors ++;
+                            }
+                            // case by case	: Y-
+                            if (mask[xyz-nx]) for (int m=0;m<clusters;m++) if (m!=k) {
+                                ngb += power.lookup(mems[m][xyz-nx],fuzziness);
+                                neighbors ++;
+                            }
+                            if (neighbors>0.0) num = num + smoothing*ngb/neighbors;
+                        }
+                        // invert the result
+                        if (num>ZERO) num = (float)invpower.lookup(num,1.0f/(1.0f-fuzziness) );
+                        else num = INF;
+    
+                        mems[k][xyz] = num;
+                        den += num;
+                    }
+    
+                    // normalization
+                    for (int k=0;k<clusters;k++) {
+                        mems[k][xyz] = mems[k][xyz]/den;
+    
+                        // compute the maximum distance
+                        dist = Math.abs(mems[k][xyz]-prev[k]);
+                        if (dist > distance) distance = dist;
+                    }
+                } else {
+                    for (int k=0;k<clusters;k++) 
+                        mems[k][xyz] = 0.0f;
+                }
+            }
+        }
         return distance;
     } // computeGeneralMemberships
     

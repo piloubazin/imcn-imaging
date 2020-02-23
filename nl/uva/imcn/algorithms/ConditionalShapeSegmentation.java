@@ -1303,7 +1303,7 @@ public class ConditionalShapeSegmentation {
 	    if (modelBackground) {
             // adding the background: building a ring around the structures of interest
             // with also a sharp decay to the boundary
-            levelsets = new float[1][nobj][];
+            levelsets = new float[nsub][nobj][];
             float[] background = new float[nxyz];
             boolean[] bgmask = new boolean[nxyz];
             for (int xyz=0;xyz<nxyz;xyz++) bgmask[xyz] = true;
@@ -1436,7 +1436,21 @@ public class ConditionalShapeSegmentation {
                 }
             }
         }
-                
+        // update also the sorting order    
+        for (int id=0;id<ndata;id++) {
+            for (int best=0;best<nbest;best++) {
+                for (int next=best+1;next<nbest;next++) {
+                    if (spatialProbas[next][id]>spatialProbas[best][id]) {
+                        float proba = spatialProbas[best][id];
+                        int label = spatialLabels[best][id];
+                        spatialProbas[best][id] = spatialProbas[next][id];
+                        spatialLabels[best][id] = spatialLabels[next][id];
+                        spatialProbas[next][id] = proba;
+                        spatialLabels[next][id] = label;
+                    }
+                }
+            }   
+        }   
 		
 		System.out.println("update joint conditional intensity priors");
 		
@@ -1665,7 +1679,7 @@ public class ConditionalShapeSegmentation {
 	
 	public final void updateSkeletonPriors(float scale, float curr, float weight) {
 	    
-		System.out.println("compute skeleton priors");
+		System.out.println("update skeleton priors");
 
 		float[][] updateProbas = new float[nskel][ndata]; 
 		int[][] updateLabels = new int[nskel][ndata];
@@ -1742,13 +1756,13 @@ public class ConditionalShapeSegmentation {
 		sklImages = null;
 		
 		// combine with previous version
-		for (int id=0;id<ndata;id++) for (int best=0;best<nbest;best++) {
+		for (int id=0;id<ndata;id++) for (int best=0;best<nskel;best++) {
 		    // always update, even when not matching
 		    skeletonProbas[best][id] *= curr/(curr+weight);
             
             int obj = Numerics.floor(skeletonLabels[best][id]/100.0f)-1;
             
-            for (int ubest=0;ubest<nbest;ubest++) {
+            for (int ubest=0;ubest<nskel;ubest++) {
                 int upd = Numerics.floor(updateLabels[ubest][id]/100.0f)-1;
                 
                 if (upd==obj) {
@@ -1758,6 +1772,21 @@ public class ConditionalShapeSegmentation {
             }
         }
                 
+        // update also the sorting order    
+        for (int id=0;id<ndata;id++) {
+            for (int best=0;best<nskel;best++) {
+                for (int next=best+1;next<nskel;next++) {
+                    if (skeletonProbas[next][id]>skeletonProbas[best][id]) {
+                        float proba = skeletonProbas[best][id];
+                        int label = skeletonLabels[best][id];
+                        skeletonProbas[best][id] = skeletonProbas[next][id];
+                        skeletonLabels[best][id] = skeletonLabels[next][id];
+                        skeletonProbas[next][id] = proba;
+                        skeletonLabels[next][id] = label;
+                    }
+                }
+            }   
+        }   
 		
 	}
 
