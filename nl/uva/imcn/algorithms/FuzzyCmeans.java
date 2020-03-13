@@ -63,6 +63,10 @@ public class FuzzyCmeans {
 	    mask = new boolean[nxyz];
 	    for (int xyz=0;xyz<nxyz;xyz++) mask[xyz] = (image[xyz]!=0); 
 	}
+	public final void initBasicMaskImage() { 
+	    mask = new boolean[nxyz];
+	    for (int xyz=0;xyz<nxyz;xyz++) mask[xyz] = true;
+	}
 	
 	public final void setClusterNumber(int val) { clusters = val; }
 	public final void setSmoothing(float val) { smoothing = val; }
@@ -99,7 +103,7 @@ public class FuzzyCmeans {
         // image range
         Imin = INF; 
         Imax = -INF;
-        for (int xyz=0;xyz<nxyz;xyz++) {
+        for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
             if (image[xyz]<Imin) Imin = image[xyz];
             if (image[xyz]>Imax) Imax = image[xyz];
         }        
@@ -130,6 +134,12 @@ public class FuzzyCmeans {
 		for (int k=1;k<clusters;k++)
             centroids[k] = centroids[k-1] + (Imax-Imin)/(float)clusters;
 
+        if (verbose) {
+			System.out.print("Initialization: centroids: ("+centroids[0]);
+			for (int k=1;k<clusters;k++) System.out.print(", "+centroids[k]);
+			System.out.print(")\n");
+		}   
+        
         // initialize the memberships
         computeMemberships();
 		
