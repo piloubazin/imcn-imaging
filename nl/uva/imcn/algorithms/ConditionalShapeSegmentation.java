@@ -58,6 +58,9 @@ public class ConditionalShapeSegmentation {
 	private boolean scalePriors = true;
 	private boolean shiftPriors = false;
 	
+	// trust more the intensities when more are available?
+	private boolean averageIntensityPriors = false;
+	
 	private final float INF = 1e9f;
 	private final float ISQRT2 = (float)(1.0/FastMath.sqrt(2.0));
 	private final float ISQRT3 = (float)(1.0/FastMath.sqrt(2.0));
@@ -457,7 +460,8 @@ public class ConditionalShapeSegmentation {
 	//public static final void setFollowSkeleton(boolean val) { skelParam=val; }
 	//public final void setCorrectSkeletonTopology(boolean val) { topoParam=val; }
 	//public final void setTopologyLUTdirectory(String val) { lutdir = val; }
-
+    public final void setAverageIntensityPriors(boolean val) { averageIntensityPriors=val; }
+	//
 	public final void setAtlasDimensions(int x, int y, int z) { nax=x; nay=y; naz=z; naxyz=nax*nay*naz; }
 	public final void setAtlasDimensions(int[] dim) { nax=dim[0]; nay=dim[1]; naz=dim[2]; naxyz=nax*nay*naz; }
 	
@@ -1965,8 +1969,9 @@ public class ConditionalShapeSegmentation {
                 }
                 // sub optimal labeling, but easy to read
                 intensityLabels[best][idmap[xyz]] = 100*(best1+1)+(best2+1);
-                // scaling for multiplicative intensities
-                intensityProbas[best][idmap[xyz]] = (float)FastMath.pow(likelihood[best1][best2],1.0/nc);
+                // scaling for multiplicative intensities (done when combining into posteriors)
+                intensityProbas[best][idmap[xyz]] = (float)likelihood[best1][best2];
+                
                 // remove best value
                 likelihood[best1][best2] = 0.0;
             }
@@ -2020,7 +2025,11 @@ public class ConditionalShapeSegmentation {
                             best=nbest;
                         }
                     }
-                    posteriors[obj1][obj2] *= intensPrior;
+                    if (averageIntensityPriors) {
+                        posteriors[obj1][obj2] = posteriors[obj1][obj2]*FastMath.pow(intensPrior,1.0/nc);
+                    } else {
+                        posteriors[obj1][obj2] = FastMath.pow(posteriors[obj1][obj2]*intensPrior,2.0/(nc+1.0));
+                    }
                 }
             }
             for (int best=0;best<nbest;best++) {
