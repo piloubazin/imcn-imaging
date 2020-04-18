@@ -33,6 +33,7 @@ public class ConditionalShapeSegmentation {
 	private int nc;
 	private int nbest = 16;
 	private int nskel = 4;
+	private byte nbg = 4;
 	
 	private float deltaIn = 1.0f; // this parameter might have a big effect
 	private float deltaOut = 0.0f;
@@ -127,9 +128,10 @@ public class ConditionalShapeSegmentation {
 	private int ntx, nty, ntz, ntxyz;
 	private float rtx, rty, rtz;
 
-	public final void setNumberOfSubjectsObjectsAndContrasts(int sub,int obj,int cnt) {
+	public final void setNumberOfSubjectsObjectsBgAndContrasts(int sub,int obj,int bg, int cnt) {
 	    nsub = sub;
 	    nobj = obj;
+	    nbg = (byte)bg;
 	    nc = cnt;
 	    lvlImages = new float[nsub][nobj][];
 	    sklImages = new float[nsub][nobj][];
@@ -445,7 +447,7 @@ public class ConditionalShapeSegmentation {
 	    cancelAll = cA;
 	    sumPosterior = sP;
 	    maxPosterior = mP;
-	    if (modelBackground) nobj = nobj+1;
+	    if (modelBackground) nobj = nobj+nbg;
 	}
 	
 	public final void setDiffusionParameters(int iter, float diff) {
@@ -695,11 +697,45 @@ public class ConditionalShapeSegmentation {
                     }*/
                     background[xyz] = -mindist;
                 }
-                InflateGdm gdm = new InflateGdm(background, nx, ny, nz, rx, ry, rz, bgmask, 0.4f, 0.4f, "no", null);
-                gdm.evolveNarrowBand(0, 1.0f);
-                levelsets[sub][0] = gdm.getLevelSet();
-                for (int obj=1;obj<nobj;obj++) {
-                    levelsets[sub][obj] = lvlImages[sub][obj-1];
+                // separate background into main tissues?
+                if (nbg>1) {
+                    FuzzyCmeans fcm = new FuzzyCmeans();
+                    fcm.setImage(intensImages[sub][0]);
+                    int[] roi = new int[nxyz];
+                    boolean[] outside = new boolean[nxyz];
+                    for (int xyz=0;xyz<nxyz;xyz++) {
+                        if (background[xyz]<0 && background[xyz]>-boundary)
+                            roi[xyz] = 1;
+                        if (background[xyz]<-boundary)
+                            outside[xyz] = true;
+                    }
+                    fcm.setMaskImage(roi);
+                    fcm.setClusterNumber(nbg);
+                    fcm.setSmoothing(0.1f);
+                    fcm.execute();
+                    int[] classif = fcm.getClassification();
+                    for (int n=0;n<nbg;n++) {
+                        background = fcm.getMembership(n);
+                        for (int xyz=0;xyz<nxyz;xyz++) {
+                            if (outside[xyz]) {
+                                background[xyz] = -1.0f;
+                            } else if (classif[xyz]==n+1) {
+                                background[xyz] = - background[xyz];
+                            } else {
+                                background[xyz] = 1.0f - background[xyz];
+                            }
+                        }
+                        InflateGdm gdm = new InflateGdm(background, nx, ny, nz, rx, ry, rz, bgmask, 0.4f, 0.4f, "no", null);
+                        gdm.evolveNarrowBand(0, 1.0f);
+                        levelsets[sub][n] = gdm.getLevelSet();
+                    }
+                } else {
+                    InflateGdm gdm = new InflateGdm(background, nx, ny, nz, rx, ry, rz, bgmask, 0.4f, 0.4f, "no", null);
+                    gdm.evolveNarrowBand(0, 1.0f);
+                    levelsets[sub][0] = gdm.getLevelSet();
+                }
+                for (int obj=nbg;obj<nobj;obj++) {
+                    levelsets[sub][obj] = lvlImages[sub][obj-nbg];
                 }
             }
             //nobj = nobj+1;
@@ -713,7 +749,7 @@ public class ConditionalShapeSegmentation {
 		for (int xyz=0;xyz<nxyz;xyz++) {
 		    float mindist = boundary;
 		    // skip the background label (bg must be the first label always)
-            for (int sub=0;sub<nsub;sub++) for (int obj=1;obj<nobj;obj++) {
+            for (int sub=0;sub<nsub;sub++) for (int obj=nbg;obj<nobj;obj++) {
                 if (levelsets[sub][obj][xyz]<mindist) mindist = levelsets[sub][obj][xyz];
             }
             if (mindist<boundary) {
@@ -1148,7 +1184,7 @@ public class ConditionalShapeSegmentation {
 		double stdsum=0,stdden=0;
 		for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
 		    double[] priors = new double[nobj];
-            for (int obj=1;obj<nobj;obj++) {
+            for (int obj=nbg;obj<nobj;obj++) {
                 //priors[obj1][obj2] = FastMath.exp( -0.5*med*med/(1.349*iqr*1.349*iqr) );
                 // alternative idea: use a combination of mean and stdev as distance basis
                 // -> take into account uncertainty better
@@ -1181,7 +1217,7 @@ public class ConditionalShapeSegmentation {
             for (int best=0;best<nskel;best++) {
                 int best1=0;
 					
-                for (int obj=1;obj<nobj;obj++) {
+                for (int obj=nbg;obj<nobj;obj++) {
                     if (priors[obj]>priors[best1]) {
 						best1 = obj;
 					}
@@ -1227,7 +1263,7 @@ public class ConditionalShapeSegmentation {
 		double stdsum=0,stdden=0;
 		for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
 		    double[] priors = new double[nobj];
-            for (int obj=1;obj<nobj;obj++) {
+            for (int obj=nbg;obj<nobj;obj++) {
                 //priors[obj1][obj2] = FastMath.exp( -0.5*med*med/(1.349*iqr*1.349*iqr) );
                 // alternative idea: use a combination of mean and stdev as distance basis
                 // -> take into account uncertainty better
@@ -1260,7 +1296,7 @@ public class ConditionalShapeSegmentation {
             for (int best=0;best<nskel;best++) {
                 int best1=0;
 					
-                for (int obj=1;obj<nobj;obj++) {
+                for (int obj=nbg;obj<nobj;obj++) {
                     if (priors[obj]>priors[best1]) {
 						best1 = obj;
 					}
@@ -1324,8 +1360,8 @@ public class ConditionalShapeSegmentation {
                 InflateGdm gdm = new InflateGdm(background, nx, ny, nz, rx, ry, rz, bgmask, 0.4f, 0.4f, "no", null);
                 gdm.evolveNarrowBand(0, 1.0f);
                 levelsets[sub][0] = gdm.getLevelSet();
-                for (int obj=1;obj<nobj;obj++) {
-                    levelsets[sub][obj] = lvlImages[sub][obj-1];
+                for (int obj=nbg;obj<nobj;obj++) {
+                    levelsets[sub][obj] = lvlImages[sub][obj-nbg];
                 }
             }
             //nobj = nobj+1;
@@ -1690,7 +1726,7 @@ public class ConditionalShapeSegmentation {
 		double stdsum=0,stdden=0;
 		for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
 		    double[] priors = new double[nobj];
-            for (int obj=1;obj<nobj;obj++) {
+            for (int obj=nbg;obj<nobj;obj++) {
                 //priors[obj1][obj2] = FastMath.exp( -0.5*med*med/(1.349*iqr*1.349*iqr) );
                 // alternative idea: use a combination of mean and stdev as distance basis
                 // -> take into account uncertainty better
@@ -1723,7 +1759,7 @@ public class ConditionalShapeSegmentation {
             for (int best=0;best<nskel;best++) {
                 int best1=0;
 					
-                for (int obj=1;obj<nobj;obj++) {
+                for (int obj=nbg;obj<nobj;obj++) {
                     if (priors[obj]>priors[best1]) {
 						best1 = obj;
 					}
@@ -2797,10 +2833,10 @@ public class ConditionalShapeSegmentation {
 		int[] labels = new int[naxyz];
         int[] start = new int[nobj];
         float[] bestscore = new float[nobj];
-        for (int obj=1;obj<nobj;obj++) bestscore[obj] = -INF;
+        for (int obj=nbg;obj<nobj;obj++) bestscore[obj] = -INF;
         heap.reset();
 		// important: skip first label as background (allows for unbounded growth)
-        for (int obj=1;obj<nobj;obj++) {
+        for (int obj=nbg;obj<nobj;obj++) {
 		    // find highest scoring voxel as starting point
             for (int b=0;b<nbest-1;b++) {
                 for (int x=1;x<nax-1;x++) for (int y=1;y<nay-1;y++) for (int z=1;z<naz-1;z++) {
@@ -2818,7 +2854,7 @@ public class ConditionalShapeSegmentation {
         }
         double[] vol = new double[nobj];
         double[] volmean = new double[nobj];
-        for (int obj=1;obj<nobj;obj++) volmean[obj] = FastMath.exp(logVolMean[obj]);
+        for (int obj=nbg;obj<nobj;obj++) volmean[obj] = FastMath.exp(logVolMean[obj]);
         while (heap.isNotEmpty()) {
             float score = heap.getFirst();
             int xyz = heap.getFirstId();
@@ -2856,10 +2892,10 @@ public class ConditionalShapeSegmentation {
 		int[] labels = new int[naxyz];
         int[] start = new int[nobj];
         float[] bestscore = new float[nobj];
-        for (int obj=1;obj<nobj;obj++) bestscore[obj] = -INF;
+        for (int obj=nbg;obj<nobj;obj++) bestscore[obj] = -INF;
         heap.reset();
 		// important: skip first label as background (allows for unbounded growth)
-        for (int obj=1;obj<nobj;obj++) {
+        for (int obj=nbg;obj<nobj;obj++) {
 		    // find highest scoring voxel as starting point
             for (int b=0;b<nbest-1;b++) {
                 for (int x=1;x<nax-1;x++) for (int y=1;y<nay-1;y++) for (int z=1;z<naz-1;z++) {
@@ -2877,7 +2913,7 @@ public class ConditionalShapeSegmentation {
         }
         double[] vol = new double[nobj];
         double[] volmean = new double[nobj];
-        for (int obj=1;obj<nobj;obj++) volmean[obj] = FastMath.exp(logVolMean[obj]);
+        for (int obj=nbg;obj<nobj;obj++) volmean[obj] = FastMath.exp(logVolMean[obj]);
         while (heap.isNotEmpty()) {
             float score = heap.getFirst();
             int xyz = heap.getFirstId1();
@@ -3224,7 +3260,7 @@ public class ConditionalShapeSegmentation {
             int xyz = x + nx*y + nx*ny*z;
             if (mask[xyz]){
                 int id = idmap[xyz];
-                for (int obj=1;obj<nobj;obj++) {
+                for (int obj=nbg;obj<nobj;obj++) {
                     for (int best=0;best<nbest;best++) {
                         if (combinedLabels[best][id]>100*(obj+1) && combinedLabels[best][id]<100*(obj+2) && combinedProbas[best][id]>minproba) {
                             x0[obj] = Numerics.min(x,x0[obj]);
@@ -3242,7 +3278,7 @@ public class ConditionalShapeSegmentation {
         // initialize the topology of the bounding box
         BinaryHeapPair	heap = new BinaryHeapPair(nx*ny+ny*nz+nz*nx, BinaryHeap2D.MINTREE);
 		// important: skip first label as background (allows for unbounded growth)
-        for (byte obj=1;obj<nobj;obj++) {
+        for (byte obj=nbg;obj<nobj;obj++) {
             System.out.print("Structure "+obj+": topology correction");
             
 		    byte[] topology = new byte[nxyz];
@@ -3401,7 +3437,7 @@ public class ConditionalShapeSegmentation {
 		// find appropriate threshold to have correct volume; should use a fast marching approach!
         int[] start = new int[nobj];
         float[] bestscore = new float[nobj];
-		for (int obj=1;obj<nobj;obj++) bestscore[obj] = -INF;
+		for (int obj=nbg;obj<nobj;obj++) bestscore[obj] = -INF;
 		double[] voldata = new double[nobj];
 		double[] avgbound = new double[nobj];
         double[] devbound = new double[nobj];
@@ -3410,7 +3446,7 @@ public class ConditionalShapeSegmentation {
 
 		// first, find where then next objects probability is in the stack
         int[][] nextbest = new int[nobj][ndata];
-		for (int obj=1;obj<nobj;obj++) {
+		for (int obj=nbg;obj<nobj;obj++) {
 		    for (int n=0;n<ndata;n++) {
 		        nextbest[obj][n] = 0;
 		        if (combinedLabels[0][n]>100*(obj+1) && combinedLabels[0][n]<100*(obj+2)) {
@@ -3433,7 +3469,7 @@ public class ConditionalShapeSegmentation {
             }
         }
 		// important: skip first label as background (allows for unbounded growth)
-        for (int obj=1;obj<nobj;obj++) {
+        for (int obj=nbg;obj<nobj;obj++) {
 		    // compute label volumes
            for (int b=0;b<nbest;b++) {
                for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
@@ -3512,7 +3548,7 @@ public class ConditionalShapeSegmentation {
         // not needed? yes needed
         // Posterior volumes:
         System.out.println("posterior volumes: ");
-        for (int obj=1;obj<nobj;obj++) {
+        for (int obj=nbg;obj<nobj;obj++) {
             //double pvol = 0.5;
             double pvol = FastMath.exp( -0.5*Numerics.square((FastMath.log(Numerics.max(1.0,voldata[obj]))-logVolMean[obj])/logVolStdv[obj]));
             double logvolmean = (1.0-pvol)*logVolMean[obj]+pvol*FastMath.log(Numerics.max(1.0,voldata[obj]));
@@ -3534,21 +3570,21 @@ public class ConditionalShapeSegmentation {
             logVolStdv[obj] = (float)logvolstdv;
         }   
         
-        for (int obj=1;obj<nobj;obj++) {
+        for (int obj=nbg;obj<nobj;obj++) {
             System.out.print("Label "+obj+": log vol = "+logVolMean[obj]+" log stdv = "+logVolStdv[obj]+" -> "+FastMath.exp(logVolMean[obj])+" ["+FastMath.exp(logVolMean[obj]-spread*logVolStdv[obj])+", "+FastMath.exp(logVolMean[obj]+spread*logVolStdv[obj])+"]\n");
         }   
         objAvg = new double[nobj];
         objDev = new double[nobj];
         boundaryDev = new double[nobj];
         // Boundary statistics
-        for (int obj=1;obj<nobj;obj++) {
+        for (int obj=nbg;obj<nobj;obj++) {
             System.out.print("Label "+obj+": boundary = "+avgbound[obj]+" +/- "+FastMath.sqrt(devbound[obj])+" (difference: "+FastMath.sqrt(devdiff[obj])+")\n");
             objAvg[obj] = avgbound[obj];
             objDev[obj] = devbound[obj];
             boundaryDev[obj] = devdiff[obj];
         }   
         // Starting points
-        for (int obj=1;obj<nobj;obj++) {
+        for (int obj=nbg;obj<nobj;obj++) {
             System.out.print("Label "+obj+": start = "+start[obj]+" (score: "+bestscore[obj]+")\n");
         }   
     }
@@ -3563,12 +3599,12 @@ public class ConditionalShapeSegmentation {
         int[] start = new int[nobj];
         double[] vol = new double[nobj];
         float[] bestscore = new float[nobj];
-		for (int obj=1;obj<nobj;obj++) bestscore[obj] = -INF;
+		for (int obj=nbg;obj<nobj;obj++) bestscore[obj] = -INF;
 		int[][] nextbest = new int[nobj][ndata];
 		heap.reset();
 		
 		// first, find where then next objects probability is in the stack
-		for (int obj=1;obj<nobj;obj++) {
+		for (int obj=nbg;obj<nobj;obj++) {
 		    for (int n=0;n<ndata;n++) {
 		        nextbest[obj][n] = 0;
 		        if (combinedLabels[0][n]>100*(obj+1) && combinedLabels[0][n]<100*(obj+2)) {
@@ -3591,7 +3627,7 @@ public class ConditionalShapeSegmentation {
             }
         }
 		// important: skip first label as background (allows for unbounded growth)
-        for (int obj=1;obj<nobj;obj++) {
+        for (int obj=nbg;obj<nobj;obj++) {
 		    // find highest scoring voxel as starting point
            for (int b=0;b<nbest;b++) {
                for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
@@ -3718,14 +3754,14 @@ public class ConditionalShapeSegmentation {
             }
         }
         System.out.println("\nOptimized volumes: ");
-        for (int obj=1;obj<nobj;obj++) System.out.println(obj+": "+bestvol[obj]+" ("+bestproba[obj]+") ");
+        for (int obj=nbg;obj<nobj;obj++) System.out.println(obj+": "+bestvol[obj]+" ("+bestproba[obj]+") ");
         // re-run one last time to get the segmentation
         heap.reset();
         for (int obj=0;obj<nobj;obj++) {
             vol[obj] = 0.0;
         }
         for(int id=0;id<ndata;id++) labels[id] = 0;
-        for (int obj=1;obj<nobj;obj++) {
+        for (int obj=nbg;obj<nobj;obj++) {
             // hardcode the starting points?
             //heap.addValue(bestscore[obj],start[obj],101*(obj+1));
             vol[obj]+= rx*ry*rz;
@@ -3829,12 +3865,12 @@ public class ConditionalShapeSegmentation {
         int[] start = new int[nobj];
         double[] vol = new double[nobj];
         float[] bestscore = new float[nobj];
-		for (int obj=1;obj<nobj;obj++) bestscore[obj] = -INF;
+		for (int obj=nbg;obj<nobj;obj++) bestscore[obj] = -INF;
 		int[][] nextbest = new int[nobj][ndata];
 		heap.reset();
 		
 		// first, find where then next objects probability is in the stack
-		for (int obj=1;obj<nobj;obj++) {
+		for (int obj=nbg;obj<nobj;obj++) {
 		    for (int n=0;n<ndata;n++) {
 		        nextbest[obj][n] = 0;
 		        if (combinedLabels[0][n]>100*(obj+1) && combinedLabels[0][n]<100*(obj+2)) {
@@ -3857,7 +3893,7 @@ public class ConditionalShapeSegmentation {
             }
         }
 		// important: skip first label as background (allows for unbounded growth)
-        for (int obj=1;obj<nobj;obj++) {
+        for (int obj=nbg;obj<nobj;obj++) {
 		    // find highest scoring voxel as starting point
            for (int b=0;b<nbest;b++) {
                for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
@@ -3915,14 +3951,14 @@ public class ConditionalShapeSegmentation {
             bestvol[obj] = FastMath.exp(logVolMean[obj]);
         }
         System.out.println("\nOptimized volumes: ");
-        for (int obj=1;obj<nobj;obj++) System.out.println(obj+": "+bestvol[obj]);
+        for (int obj=nbg;obj<nobj;obj++) System.out.println(obj+": "+bestvol[obj]);
         // re-run one last time to get the segmentation
         heap.reset();
         for (int obj=0;obj<nobj;obj++) {
             vol[obj] = 0.0;
         }
         for(int id=0;id<ndata;id++) labels[id] = 0;
-        for (int obj=1;obj<nobj;obj++) {
+        for (int obj=nbg;obj<nobj;obj++) {
             // hardcode the starting points?
             //heap.addValue(bestscore[obj],start[obj],101*(obj+1));
             vol[obj]+= rx*ry*rz;
@@ -4025,7 +4061,7 @@ public class ConditionalShapeSegmentation {
 		int[] labels = new int[ndata];
         int[] start = new int[nobj];
         float[] bestscore = new float[nobj];
-		for (int obj=1;obj<nobj;obj++) bestscore[obj] = -INF;
+		for (int obj=nbg;obj<nobj;obj++) bestscore[obj] = -INF;
 		double[] voldata = new double[nobj];
 		double[] avgbound = new double[nobj];
         double[] devbound = new double[nobj];
@@ -4035,7 +4071,7 @@ public class ConditionalShapeSegmentation {
 		heap.reset();
 		
 		// first, find where then next objects probability is in the stack
-		for (int obj=1;obj<nobj;obj++) {
+		for (int obj=nbg;obj<nobj;obj++) {
 		    for (int n=0;n<ndata;n++) {
 		        nextbest[obj][n] = 0;
 		        if (combinedLabels[0][n]>100*(obj+1) && combinedLabels[0][n]<100*(obj+2)) {
@@ -4058,7 +4094,7 @@ public class ConditionalShapeSegmentation {
             }
         }
 		// important: skip first label as background (allows for unbounded growth)
-        for (int obj=1;obj<nobj;obj++) {
+        for (int obj=nbg;obj<nobj;obj++) {
 		    // find highest scoring voxel as starting point
            for (int b=0;b<nbest;b++) {
                for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
@@ -4136,7 +4172,7 @@ public class ConditionalShapeSegmentation {
             }
         }
         // Posterior volumes:
-        for (int obj=1;obj<nobj;obj++) {
+        for (int obj=nbg;obj<nobj;obj++) {
             double logvolmean = 0.5*logVolMean[obj]+0.5*FastMath.log(Numerics.max(1.0,voldata[obj]));
             double logvolstdv = FastMath.sqrt( 0.5*( Numerics.square(logVolStdv[obj])
                                 + 0.5*Numerics.square(logVolMean[obj]-FastMath.log(Numerics.max(1.0,voldata[obj]))) ) );
@@ -4146,15 +4182,15 @@ public class ConditionalShapeSegmentation {
             logVolStdv[obj] = (float)logvolstdv;
         }   
         
-        for (int obj=1;obj<nobj;obj++) {
+        for (int obj=nbg;obj<nobj;obj++) {
             System.out.print("Label "+obj+": log vol = "+logVolMean[obj]+" log stdv = "+logVolStdv[obj]+" -> "+FastMath.exp(logVolMean[obj])+" ["+FastMath.exp(logVolMean[obj]-spread*logVolStdv[obj])+", "+FastMath.exp(logVolMean[obj]+spread*logVolStdv[obj])+"]\n");
         }   
         // Boundary statistics
-        for (int obj=1;obj<nobj;obj++) {
+        for (int obj=nbg;obj<nobj;obj++) {
             System.out.print("Label "+obj+": boundary = "+avgbound[obj]+" +/- "+FastMath.sqrt(devbound[obj])+" (difference: "+FastMath.sqrt(devdiff[obj])+")\n");
         }   
         // Starting points
-        for (int obj=1;obj<nobj;obj++) {
+        for (int obj=nbg;obj<nobj;obj++) {
             System.out.print("Label "+obj+": start = "+start[obj]+" (score: "+bestscore[obj]+")\n");
         }   
                 
@@ -4258,14 +4294,14 @@ public class ConditionalShapeSegmentation {
             }
         }
         System.out.println("\nOptimized volumes: ");
-        for (int obj=1;obj<nobj;obj++) System.out.println(obj+": "+bestvol[obj]+" ("+bestproba[obj]+") ");
+        for (int obj=nbg;obj<nobj;obj++) System.out.println(obj+": "+bestvol[obj]+" ("+bestproba[obj]+") ");
         // re-run one last time to get the segmentation
         heap.reset();
         for (int obj=0;obj<nobj;obj++) {
             vol[obj] = 0.0;
         }
         for(int id=0;id<ndata;id++) labels[id] = 0;
-        for (int obj=1;obj<nobj;obj++) {
+        for (int obj=nbg;obj<nobj;obj++) {
             heap.addValue(bestscore[obj],start[obj],101*(obj+1));
         }
         while (heap.isNotEmpty()) {
@@ -4371,7 +4407,7 @@ public class ConditionalShapeSegmentation {
 		int[] labels = new int[ndata];
         int[] start = new int[nobj];
         float[] bestscore = new float[nobj];
-		for (int obj=1;obj<nobj;obj++) bestscore[obj] = -INF;
+		for (int obj=nbg;obj<nobj;obj++) bestscore[obj] = -INF;
 		double[] voldata = new double[nobj];
 		double[][] voldata2 = new double[nobj][nobj];
 		double[] avgbound = new double[nobj];
@@ -4382,7 +4418,7 @@ public class ConditionalShapeSegmentation {
 		heap.reset();
 		
 		// first, find where then next objects probability is in the stack
-		for (int obj=1;obj<nobj;obj++) {
+		for (int obj=nbg;obj<nobj;obj++) {
 		    for (int n=0;n<ndata;n++) {
 		        nextbest[obj][n] = 0;
 		        if (combinedLabels[0][n]>100*(obj+1) && combinedLabels[0][n]<100*(obj+2)) {
@@ -4405,7 +4441,7 @@ public class ConditionalShapeSegmentation {
             }
         }
 		// important: skip first label as background (allows for unbounded growth)
-        for (int obj=1;obj<nobj;obj++) {
+        for (int obj=nbg;obj<nobj;obj++) {
 		    // find highest scoring voxel as starting point
            for (int b=0;b<nbest;b++) {
                for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
@@ -4506,7 +4542,7 @@ public class ConditionalShapeSegmentation {
         }
         
         // Posterior volumes:
-        for (int obj=1;obj<nobj;obj++) {
+        for (int obj=nbg;obj<nobj;obj++) {
             double logvolmean = 0.5*logVolMean[obj]+0.5*FastMath.log(Numerics.max(1.0,voldata[obj]));
             double logvolstdv = FastMath.sqrt( 0.5*( Numerics.square(logVolStdv[obj])
                                 + 0.5*Numerics.square(logVolMean[obj]-FastMath.log(Numerics.max(1.0,voldata[obj]))) ) );
@@ -4526,11 +4562,11 @@ public class ConditionalShapeSegmentation {
             logVolStdv2[obj1][obj2] = (float)logvolstdv;
         }   
         // Boundary statistics
-        for (int obj=1;obj<nobj;obj++) {
+        for (int obj=nbg;obj<nobj;obj++) {
             System.out.print("Label "+obj+": boundary = "+avgbound[obj]+" +/- "+FastMath.sqrt(devbound[obj])+" (difference: "+FastMath.sqrt(devdiff[obj])+")\n");
         }   
         // Starting points
-        for (int obj=1;obj<nobj;obj++) {
+        for (int obj=nbg;obj<nobj;obj++) {
             System.out.print("Label "+obj+": start = "+start[obj]+" (score: "+bestscore[obj]+")\n");
         }   
                 
@@ -4626,14 +4662,14 @@ public class ConditionalShapeSegmentation {
             }
         }
         System.out.println("\nOptimized volumes: ");
-        for (int obj=1;obj<nobj;obj++) System.out.println(obj+": "+bestvol[obj]+" ("+bestproba[obj]+") ");
+        for (int obj=nbg;obj<nobj;obj++) System.out.println(obj+": "+bestvol[obj]+" ("+bestproba[obj]+") ");
         // re-run one last time to get the segmentation
         heap.reset();
         for (int obj=0;obj<nobj;obj++) {
             vol[obj] = 0.0;
         }
         for(int id=0;id<ndata;id++) labels[id] = 0;
-        for (int obj=1;obj<nobj;obj++) {
+        for (int obj=nbg;obj<nobj;obj++) {
             heap.addValue(bestscore[obj],start[obj],101*(obj+1));
         }
         while (heap.isNotEmpty()) {
@@ -4952,14 +4988,14 @@ public class ConditionalShapeSegmentation {
 		int[] labels = new int[ndata];
         int[] start = new int[nobj];
         float[] bestscore = new float[nobj];
-		for (int obj=1;obj<nobj;obj++) bestscore[obj] = -INF;
+		for (int obj=nbg;obj<nobj;obj++) bestscore[obj] = -INF;
 		double[][] voldata = new double[nobj][nobj];
 		double[][] devdiff = new double[nobj][nobj];
         int[][] nbound = new int[nobj][nobj];
         heap.reset();
 		
 		// important: skip first label as background (allows for unbounded growth)
-        for (int obj=1;obj<nobj;obj++) {
+        for (int obj=nbg;obj<nobj;obj++) {
 		    // find highest scoring voxel as starting point
            for (int b=0;b<nbest;b++) {
                for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
@@ -5120,7 +5156,7 @@ public class ConditionalShapeSegmentation {
         }
         System.out.println("\nOptimized volumes: ");
         //for (int obj1=1;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) System.out.println(obj1+" | "+obj2+": "+bestvol[obj1][obj2]+" ("+bestproba[obj1][obj2]+") ");
-        for (int obj=1;obj<nobj;obj++) System.out.println(obj+": "+bestvol[obj]+" ("+bestproba[obj]+") ");
+        for (int obj=nbg;obj<nobj;obj++) System.out.println(obj+": "+bestvol[obj]+" ("+bestproba[obj]+") ");
         // re-run one last time to get the segmentation
         heap.reset();
         for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
