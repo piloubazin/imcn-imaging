@@ -59,7 +59,7 @@ public class ConditionalShapeSegmentation {
 	private boolean shiftPriors = false;
 	
 	// trust more the intensities when more are available?
-	private boolean averageIntensityPriors = false;
+	private boolean averageIntensityPriors = true;
 	
 	private final float INF = 1e9f;
 	private final float ISQRT2 = (float)(1.0/FastMath.sqrt(2.0));
