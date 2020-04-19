@@ -219,12 +219,12 @@ public class ConditionalShapeSegmentation {
             /*float[] atlasVol = new float[nobj];
             for (int xyz=0;xyz<naxyz;xyz++) if (lval[xyz]>0) {
                 int obj = Numerics.floor(lval[xyz]/100.0f);
-                atlasVol[obj-1] += rax*ray*raz;
+                atlasVol[obj-nbg] += rax*ray*raz;
             }
             float[] mappedVol = new float[nobj];
             for (int idx=0;idx<ntxyz;idx++) if (mask[idx]) {
                 int obj = Numerics.floor(spatialLabels[0][idmap[idx]]/100.0f);
-                mappedVol[obj-1] += rtx*rty*rtz;
+                mappedVol[obj-nbg] += rtx*rty*rtz;
             }*/
             // use a region growing approach instead...
             int[] atlasLabels = atlasVolumeLabels(pval, lval);
@@ -686,7 +686,7 @@ public class ConditionalShapeSegmentation {
             for (int sub=0;sub<nsub;sub++) {
                 for (int xyz=0;xyz<nxyz;xyz++) {
                     float mindist = boundary;
-                    for (int obj=0;obj<nobj-1;obj++) {
+                    for (int obj=0;obj<nobj-nbg;obj++) {
                         if (lvlImages[sub][obj][xyz]<mindist) mindist = lvlImages[sub][obj][xyz];
                     }
                     /*
@@ -697,21 +697,33 @@ public class ConditionalShapeSegmentation {
                     }*/
                     background[xyz] = -mindist;
                 }
-                // separate background into main tissues?
+                InflateGdm gdm = new InflateGdm(background, nx, ny, nz, rx, ry, rz, bgmask, 0.4f, 0.4f, "no", null);
+                gdm.evolveNarrowBand(0, 1.0f);
+                 // separate background into main tissues?
                 if (nbg>1) {
+                    background = gdm.getLevelSet();
                     FuzzyCmeans fcm = new FuzzyCmeans();
+                    fcm.setDimensions(nx, ny, nz);
                     fcm.setImage(intensImages[sub][0]);
                     int[] roi = new int[nxyz];
+                    int roisize=0;
                     boolean[] outside = new boolean[nxyz];
                     for (int xyz=0;xyz<nxyz;xyz++) {
-                        if (background[xyz]<0 && background[xyz]>-boundary)
+                        if (background[xyz]<=0 && background[xyz]>-boundary) {
                             roi[xyz] = 1;
-                        if (background[xyz]<-boundary)
+                            roisize++;
+                        } else 
+                        if (background[xyz]<=-boundary) {
                             outside[xyz] = true;
+                        }
                     }
+                    System.out.print("bg size: "+roisize+"\n");
                     fcm.setMaskImage(roi);
                     fcm.setClusterNumber(nbg);
                     fcm.setSmoothing(0.1f);
+                    // hard-coded prior for R1 maps... not great
+                    float[] t1prior = {0.25f, 0.5f, 1.0f};
+                    fcm.setInitCentroids(t1prior);
                     fcm.execute();
                     int[] classif = fcm.getClassification();
                     for (int n=0;n<nbg;n++) {
@@ -725,13 +737,11 @@ public class ConditionalShapeSegmentation {
                                 background[xyz] = 1.0f - background[xyz];
                             }
                         }
-                        InflateGdm gdm = new InflateGdm(background, nx, ny, nz, rx, ry, rz, bgmask, 0.4f, 0.4f, "no", null);
+                        gdm = new InflateGdm(background, nx, ny, nz, rx, ry, rz, bgmask, 0.4f, 0.4f, "no", null);
                         gdm.evolveNarrowBand(0, 1.0f);
                         levelsets[sub][n] = gdm.getLevelSet();
                     }
                 } else {
-                    InflateGdm gdm = new InflateGdm(background, nx, ny, nz, rx, ry, rz, bgmask, 0.4f, 0.4f, "no", null);
-                    gdm.evolveNarrowBand(0, 1.0f);
                     levelsets[sub][0] = gdm.getLevelSet();
                 }
                 for (int obj=nbg;obj<nobj;obj++) {
@@ -1190,12 +1200,12 @@ public class ConditionalShapeSegmentation {
                 // -> take into account uncertainty better
                 double mean = 0.0;
                 for (int sub=0;sub<nsub;sub++) {
-                    mean += Numerics.max(0.0, sklImages[sub][obj-1][xyz]);
+                    mean += Numerics.max(0.0, sklImages[sub][obj-nbg][xyz]);
                 }
                 mean /= nsub;
                 double var = 0.0;
                 for (int sub=0;sub<nsub;sub++) {
-                    var += Numerics.square(mean-Numerics.max(0.0, sklImages[sub][obj-1][xyz]));
+                    var += Numerics.square(mean-Numerics.max(0.0, sklImages[sub][obj-nbg][xyz]));
                 }
                 var = FastMath.sqrt(var/nsub);
                 
@@ -1269,12 +1279,12 @@ public class ConditionalShapeSegmentation {
                 // -> take into account uncertainty better
                 double mean = 0.0;
                 for (int sub=0;sub<nsub;sub++) {
-                    mean += Numerics.max(0.0, sklImages[sub][obj-1][xyz]);
+                    mean += Numerics.max(0.0, sklImages[sub][obj-nbg][xyz]);
                 }
                 mean /= nsub;
                 double var = 0.0;
                 for (int sub=0;sub<nsub;sub++) {
-                    var += Numerics.square(mean-Numerics.max(0.0, sklImages[sub][obj-1][xyz]));
+                    var += Numerics.square(mean-Numerics.max(0.0, sklImages[sub][obj-nbg][xyz]));
                 }
                 var = FastMath.sqrt(var/nsub);
                 
@@ -1352,7 +1362,7 @@ public class ConditionalShapeSegmentation {
             for (int sub=0;sub<nsub;sub++) {
                 for (int xyz=0;xyz<nxyz;xyz++) {
                     float mindist = boundary;
-                    for (int obj=0;obj<nobj-1;obj++) {
+                    for (int obj=0;obj<nobj-nbg;obj++) {
                         if (lvlImages[sub][obj][xyz]<mindist) mindist = lvlImages[sub][obj][xyz];
                     }
                     background[xyz] = -mindist;
@@ -1732,12 +1742,12 @@ public class ConditionalShapeSegmentation {
                 // -> take into account uncertainty better
                 double mean = 0.0;
                 for (int sub=0;sub<nsub;sub++) {
-                    mean += Numerics.max(0.0, sklImages[sub][obj-1][xyz]);
+                    mean += Numerics.max(0.0, sklImages[sub][obj-nbg][xyz]);
                 }
                 mean /= nsub;
                 double var = 0.0;
                 for (int sub=0;sub<nsub;sub++) {
-                    var += Numerics.square(mean-Numerics.max(0.0, sklImages[sub][obj-1][xyz]));
+                    var += Numerics.square(mean-Numerics.max(0.0, sklImages[sub][obj-nbg][xyz]));
                 }
                 var = FastMath.sqrt(var/nsub);
                 

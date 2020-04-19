@@ -29,7 +29,7 @@ public class FuzzyCmeans {
 	// data buffers
 	private 	float[]			image;  			// original image
 	private 	float[][]		mems;				// membership function
-	private 	float[]			centroids;			// cluster centroids
+	private 	float[]			centroids=null;			// cluster centroids
 	private 	boolean[]		mask;   			// image mask: true for data points
 	private     int[]           id;                 // re-ordering of data by increasing centroid values
 	private     int[]           classification;     // hard classification
@@ -74,6 +74,8 @@ public class FuzzyCmeans {
 	public final void setMaxDist(float val) { maxDist = val; }
 	public final void setMaxIter(int val) { maxIter = val; }
 	
+	public final void setInitCentroids(float[] val) { centroids = val; }
+	
 	public final void setDimensions(int x, int y, int z) { nx=x; ny=y; nz=z; nxyz=nx*ny*nz; }
 	public final void setDimensions(int[] dim) { nx=dim[0]; ny=dim[1]; nz=dim[2]; nxyz=nx*ny*nz; }
 	
@@ -110,7 +112,6 @@ public class FuzzyCmeans {
 		
         // init all the new arrays
         mems = new float[clusters][nxyz];
-        centroids = new float[clusters];
         prev = new float[clusters];
         if (fuzziness!=2) {
             power = new PowerTable(0.0f , 1.0f , 0.000001f , fuzziness );
@@ -125,16 +126,20 @@ public class FuzzyCmeans {
 		for (int k=0;k<clusters;k++) for (int xyz=0;xyz<nxyz;xyz++) {
             mems[k][xyz] = 0.0f;
 		}
-		for (int k=0;k<clusters;k++) {
-			centroids[k] = 0.0f;
-		}
-		
-		// init centroids from data range
-		centroids[0] = Imin + 0.5f*(Imax-Imin)/(float)clusters;
-		for (int k=1;k<clusters;k++)
-            centroids[k] = centroids[k-1] + (Imax-Imin)/(float)clusters;
-
+		if (centroids==null) {
+		    centroids = new float[clusters];
+            for (int k=0;k<clusters;k++) {
+                centroids[k] = 0.0f;
+            }
+            
+            // init centroids from data range
+            centroids[0] = Imin + 0.5f*(Imax-Imin)/(float)clusters;
+            for (int k=1;k<clusters;k++)
+                centroids[k] = centroids[k-1] + (Imax-Imin)/(float)clusters;
+        }
+        
         if (verbose) {
+			System.out.print("Image range ["+Imin+", "+Imax+"]\n");
 			System.out.print("Initialization: centroids: ("+centroids[0]);
 			for (int k=1;k<clusters;k++) System.out.print(", "+centroids[k]);
 			System.out.print(")\n");
