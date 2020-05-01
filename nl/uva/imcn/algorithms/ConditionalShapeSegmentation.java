@@ -33,7 +33,7 @@ public class ConditionalShapeSegmentation {
 	private int nc;
 	private int nbest = 16;
 	private int nskel = 4;
-	private byte nbg = 4;
+	private byte nbg = 1;
 	
 	private float deltaIn = 1.0f; // this parameter might have a big effect
 	private float deltaOut = 0.0f;
@@ -720,10 +720,18 @@ public class ConditionalShapeSegmentation {
                     System.out.print("bg size: "+roisize+"\n");
                     fcm.setMaskImage(roi);
                     fcm.setClusterNumber(nbg);
-                    fcm.setSmoothing(0.1f);
+                    fcm.setSmoothing(0.01f);
                     // hard-coded prior for R1 maps... not great
-                    float[] t1prior = {0.25f, 0.5f, 1.0f};
-                    fcm.setInitCentroids(t1prior);
+                    if (nbg==2) {
+                        float[] t1prior = {0.25f, 0.75f};
+                        fcm.setInitCentroids(t1prior);
+                        fcm.setMaxIter(0);
+                    } else
+                    if (nbg==3) {
+                        float[] t1prior = {0.25f, 0.75f, 1.25f};
+                        fcm.setInitCentroids(t1prior);
+                        fcm.setMaxIter(0);
+                    }
                     fcm.execute();
                     int[] classif = fcm.getClassification();
                     for (int n=0;n<nbg;n++) {
@@ -3853,10 +3861,19 @@ public class ConditionalShapeSegmentation {
             int xyz = x+ntx*y+ntx*nty*z;
             if (mask[xyz]) {
                 int obj = labels[idmap[xyz]];
-                for (int best=0;best<nbest;best++) {
-                    if (combinedLabels[best][idmap[xyz]]>100*(obj+1) && combinedLabels[best][idmap[xyz]]<100*(obj+2)) {
-                        finalProba[xyz] = Numerics.max(finalProba[xyz],combinedProbas[best][idmap[xyz]]);
-                        best=nbest;
+                if (obj==0) {
+                    for (int best=0;best<nbest;best++) {
+                        if (combinedLabels[best][idmap[xyz]]>100 && combinedLabels[best][idmap[xyz]]<100*(nbg+1)) {
+                            finalProba[xyz] = Numerics.max(finalProba[xyz],combinedProbas[best][idmap[xyz]]);
+                            best=nbest;
+                        }
+                    }
+                } else {
+                    for (int best=0;best<nbest;best++) {
+                        if (combinedLabels[best][idmap[xyz]]>100*(obj+1) && combinedLabels[best][idmap[xyz]]<100*(obj+2)) {
+                            finalProba[xyz] = Numerics.max(finalProba[xyz],combinedProbas[best][idmap[xyz]]);
+                            best=nbest;
+                        }
                     }
                 }
                 finalLabel[xyz] = obj;
@@ -3902,7 +3919,7 @@ public class ConditionalShapeSegmentation {
                 }
             }
         }
-		// important: skip first label as background (allows for unbounded growth)
+		// important: skip first labels as background (allows for unbounded growth)
         for (int obj=nbg;obj<nobj;obj++) {
 		    // find highest scoring voxel as starting point
            for (int b=0;b<nbest;b++) {
@@ -4050,10 +4067,20 @@ public class ConditionalShapeSegmentation {
             int xyz = x+ntx*y+ntx*nty*z;
             if (mask[xyz]) {
                 int obj = labels[idmap[xyz]];
-                for (int best=0;best<nbest;best++) {
-                    if (combinedLabels[best][idmap[xyz]]>100*(obj+1) && combinedLabels[best][idmap[xyz]]<100*(obj+2)) {
-                        finalProba[xyz] = Numerics.max(finalProba[xyz],combinedProbas[best][idmap[xyz]]);
-                        best=nbest;
+                if (obj==0) {
+                    // check for all background classes
+                    for (int best=0;best<nbest;best++) {
+                        if (combinedLabels[best][idmap[xyz]]>100 && combinedLabels[best][idmap[xyz]]<100*(nbg+1)) {
+                            finalProba[xyz] = Numerics.max(finalProba[xyz],combinedProbas[best][idmap[xyz]]);
+                            best=nbest;
+                        }
+                    }
+                } else {
+                    for (int best=0;best<nbest;best++) {
+                        if (combinedLabels[best][idmap[xyz]]>100*(obj+1) && combinedLabels[best][idmap[xyz]]<100*(obj+2)) {
+                            finalProba[xyz] = Numerics.max(finalProba[xyz],combinedProbas[best][idmap[xyz]]);
+                            best=nbest;
+                        }
                     }
                 }
                 finalLabel[xyz] = obj;
