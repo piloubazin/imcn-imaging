@@ -89,7 +89,7 @@ public class SmoothGdm {
 	double balloonforce;
 
 	// for debug and display
-	private static final boolean		debug=false;
+	private static final boolean		debug=true;
 	private static final boolean		verbose=true;
 	
 	private static class NarrowBand {
@@ -188,6 +188,10 @@ public class SmoothGdm {
 		try {
 			levelset = new float[nx*ny*nz];
 			segmentation = new byte[nx*ny*nz];	
+			if (mask==null) {
+			    mask = new boolean[nx*ny*nz];
+			    for (int xyz=0;xyz<nx*ny*nz;xyz++) mask[xyz] = true;
+			}
 			// initalize the heap too so we don't have to do it multiple times
 			heap = new BinaryHeap2D(nx*ny+ny*nz+nz*nx, BinaryHeap2D.MINTREE);
 			// topology luts
@@ -283,6 +287,10 @@ public class SmoothGdm {
 		try {
 			//levelset = new float[nx*ny*nz];
 			segmentation = new byte[nx*ny*nz];	
+			if (mask==null) {
+			    mask = new boolean[nx*ny*nz];
+			    for (int xyz=0;xyz<nx*ny*nz;xyz++) mask[xyz] = true;
+			}
 			// initalize the heap too so we don't have to do it multiple times
 			heap = new BinaryHeap2D(nx*ny+ny*nz+nz*nx, BinaryHeap2D.MINTREE);
 			// topology luts
@@ -620,7 +628,7 @@ public class SmoothGdm {
 			
 		// evolve until a landmine is closer than minDist of the boundaries
 		float diff = 1.0f;
-		for (int t=0;t<iter && diff>mindiff;t++) {
+		for (int t=0;t<iter && (diff>mindiff || t<10);t++) {
 			if (debug) System.out.print("iteration "+t+"\n");
         			
 			boolean reinit = false;
