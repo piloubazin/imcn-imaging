@@ -171,7 +171,7 @@ public class ConditionalShapeSegmentation {
 	}
 	public final void setNumberOfTargetContrasts(int cnt) {
 	    ntc = cnt;
-	    avgAtlasImages = new float[ntc][];
+	    avgAtlasImages = new float[nc][];
 	    avgTargetImages = new float[ntc][];
 	}
 	public final void setAvgAtlasImageAt(int cnt, float[] val) { avgAtlasImages[cnt] = val; 
