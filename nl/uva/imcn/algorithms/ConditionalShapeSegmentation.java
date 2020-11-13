@@ -34,6 +34,7 @@ public class ConditionalShapeSegmentation {
 	private int nbest = 16;
 	private int nskel = 4;
 	private byte nbg = 1;
+	private int ntc;
 	
 	private float deltaIn = 1.0f; // this parameter might have a big effect
 	private float deltaOut = 0.0f;
@@ -75,6 +76,13 @@ public class ConditionalShapeSegmentation {
 	private double[][][] condmin = null;
 	private double[][][] condmax = null;
 	private int nbins=200;
+	
+	private float[][] avgAtlasImages;
+	private float[][] avgTargetImages;
+	
+	private double[][][][] trgcondhistogram = null;
+	private double[] trgcondmin = null;
+	private double[] trgcondmax = null;
 	
 	private boolean[][][] condpair = null;
 	
@@ -159,6 +167,17 @@ public class ConditionalShapeSegmentation {
 	    //System.out.println("target ("+cnt+") = "+targetImages[cnt][Numerics.floor(nx/2+nx*ny/2+nx*ny*nz/2)]);
 	}
 	public final void setMappingToAtlas(float[] val) { map2atlas = val; 
+	    //System.out.println("target ("+cnt+") = "+targetImages[cnt][Numerics.floor(nx/2+nx*ny/2+nx*ny*nz/2)]);
+	}
+	public final void setNumberOfTargetContrasts(int cnt) {
+	    ntc = cnt;
+	    avgAtlasImages = new float[nc][];
+	    avgTargetImages = new float[ntc][];
+	}
+	public final void setAvgAtlasImageAt(int cnt, float[] val) { avgAtlasImages[cnt] = val; 
+	    //System.out.println("target ("+cnt+") = "+targetImages[cnt][Numerics.floor(nx/2+nx*ny/2+nx*ny*nz/2)]);
+	}
+	public final void setAvgTargetImageAt(int cnt, float[] val) { avgTargetImages[cnt] = val; 
 	    //System.out.println("target ("+cnt+") = "+targetImages[cnt][Numerics.floor(nx/2+nx*ny/2+nx*ny*nz/2)]);
 	}
 	public final void setShapeAtlasProbasAndLabels(float[] pval, int[] lval) {
@@ -647,6 +666,24 @@ public class ConditionalShapeSegmentation {
 	        }
             val[obj2+obj1*nobj+(nbins+4)*nobj*nobj+c*nobj*nobj*(nbins+6)] = (float)logVolMean2[obj1][obj2];
             val[obj2+obj1*nobj+(nbins+5)*nobj*nobj+c*nobj*nobj*(nbins+6)] = (float)logVolStdv2[obj1][obj2];
+	    }
+	    return val;
+	}
+	
+	public final float[] getTargetConditionalHistogram() {
+	    float[] val = new float[ntc*nobj*nobj*(nbins+6)];
+	    for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) for (int tc=0;tc<ntc;tc++) {
+	        val[obj2+obj1*nobj+0*nobj*nobj+tc*nobj*nobj*(nbins+6)] = (float)trgcondmin[tc];
+	        for (int bin=0;bin<nbins;bin++) {
+	            val[obj2+obj1*nobj+(bin+1)*nobj*nobj+tc*nobj*nobj*(nbins+6)] = (float)trgcondhistogram[tc][obj1][obj2][bin];
+	        }
+	        val[obj2+obj1*nobj+(nbins+1)*nobj*nobj+tc*nobj*nobj*(nbins+6)] = (float)trgcondmax[tc];
+	        if (obj1==obj2) {
+	            val[obj2+obj1*nobj+(nbins+2)*nobj*nobj+tc*nobj*nobj*(nbins+6)] = (float)logVolMean[obj1];
+	            val[obj2+obj1*nobj+(nbins+3)*nobj*nobj+tc*nobj*nobj*(nbins+6)] = (float)logVolStdv[obj1];
+	        }
+            val[obj2+obj1*nobj+(nbins+4)*nobj*nobj+tc*nobj*nobj*(nbins+6)] = (float)logVolMean2[obj1][obj2];
+            val[obj2+obj1*nobj+(nbins+5)*nobj*nobj+tc*nobj*nobj*(nbins+6)] = (float)logVolStdv2[obj1][obj2];
 	    }
 	    return val;
 	}
@@ -2144,6 +2181,66 @@ public class ConditionalShapeSegmentation {
  		    }
         }
     }  
+	
+	public final void mapAtlasTargetIntensityPriors() {
+	    nx = nax; ny = nay; nz = naz; nxyz = naxyz;
+	    rx = rax; ry = ray; rz = raz;
+	    
+        System.out.println("(use histograms for intensities)");
+        trgcondmin = new double[ntc];
+        trgcondmax = new double[ntc];
+        trgcondhistogram = new double[ntc][nobj][nobj][nbins];
+        
+        for (int tc=0;tc<ntc;tc++) {
+            trgcondmin[tc] = 1e9;
+            trgcondmax[tc] = -1e9;
+            for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
+		        if (avgTargetImages[tc][xyz]<trgcondmin[tc]) trgcondmin[tc] = avgTargetImages[tc][xyz];
+		        if (avgTargetImages[tc][xyz]>trgcondmax[tc]) trgcondmax[tc] = avgTargetImages[tc][xyz];
+		    }
+		}
+        for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
+            System.out.print("\n("+(obj1+1)+" | "+(obj2+1)+"): ");
+            for (int tc=0;tc<ntc;tc++) {
+                for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
+                    // look for non-zero priors
+                    for (int best=0;best<nbest;best++) {
+                        if (spatialLabels[best][idmap[xyz]]==100*(obj1+1)+(obj2+1)) {
+                            float prior = spatialProbas[best][idmap[xyz]];
+                            for (int c=0;c<nc;c++) {
+                                int bin = Numerics.bounded(Numerics.ceil( (avgAtlasImages[c][xyz]-condmin[c][obj1][obj2])/(condmax[c][obj1][obj2]-condmin[c][obj1][obj2])*nbins)-1, 0, nbins-1);
+                                prior *= condhistogram[c][obj1][obj2][bin];
+                            }
+                            
+                            int tbin = Numerics.bounded(Numerics.ceil( (avgTargetImages[tc][xyz]-trgcondmin[tc])/(trgcondmax[tc]-trgcondmin[tc])*nbins)-1, 0, nbins-1);
+                            trgcondhistogram[tc][obj1][obj2][tbin] += prior;
+                        }
+                    }
+                }
+            }
+        }
+        for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
+            for (int tc=0;tc<ntc;tc++) {
+                // smooth histograms to avoid sharp edge effects
+                double var = 1.0*1.0;
+                double[] tmphist = new double[nbins];
+                for (int bin1=0;bin1<nbins;bin1++) {
+                    for (int bin2=0;bin2<nbins;bin2++) {
+                        tmphist[bin1] += trgcondhistogram[tc][obj1][obj2][bin2]*FastMath.exp(-0.5*(bin1-bin2)*(bin1-bin2)/var);
+                    }
+                }
+                for (int bin=0;bin<nbins;bin++) trgcondhistogram[tc][obj1][obj2][bin] = tmphist[bin];
+                
+                // normalize: sum over count x spread = 1
+                double sum = 0.0;
+                for (int bin=0;bin<nbins;bin++) sum += trgcondhistogram[tc][obj1][obj2][bin];   
+                //for (int bin=0;bin<nbins;bin++) condhistogram[c][obj1][obj2][bin] /= sum*(condmax[c][obj1][obj2]-condmin[c][obj1][obj2]);   
+                for (int bin=0;bin<nbins;bin++) trgcondhistogram[tc][obj1][obj2][bin] /= sum;   
+            }
+        }
+    	
+		return;
+	}
 	
 	public final void collapseConditionalMaps() {	    
         for (int id=0;id<ndata;id++) {
