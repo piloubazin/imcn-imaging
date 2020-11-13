@@ -23,6 +23,7 @@ public class NonlocalIntensityMapping {
 	// distance for patch and search windows
 	int patch = 2;
 	int search = 3;
+	boolean useMedian = false;
 	
 	float[] result;
 	
@@ -42,6 +43,8 @@ public class NonlocalIntensityMapping {
 	
 	public final void setPatchDistance(int val) { patch = val; }
 	public final void setSearchDistance(int val) { search = val; }
+
+	public final void setUseMedian(boolean val) { useMedian = val; }
 
 	public final void setDimensions(int x, int y, int z) { nx=x; ny=y; nz=z; nxyz=nx*ny*nz; }
 	public final void setDimensions(int[] dim) { nx=dim[0]; ny=dim[1]; nz=dim[2]; nxyz=nx*ny*nz; }
@@ -89,22 +92,77 @@ public class NonlocalIntensityMapping {
                 }
             }
             //if (mindist==0) mindist = 0.001f;
-            
-            // weighted average
-            double sum = 0.0f;
-            double den = 0.0f;
-            
-            w=0;
-            for (int xs=x-search;xs<=x+search;xs++) for (int ys=y-search;ys<=y+search;ys++) for (int r=0;r<nref;r++) { 
-                if (distance[w]>=0.0f) {
-                    double weight = weights[r]*FastMath.exp(-distance[w]/mindist);
-                    sum += weight*mapped[r][xs+nx*ys];
-                    den += weight;
+            if (useMedian) {
+                float[] weight = new float[nw];
+                float[] intens = new float[nw];
+                w=0;
+                for (int xs=x-search;xs<=x+search;xs++) for (int ys=y-search;ys<=y+search;ys++) for (int r=0;r<nref;r++) { 
+                    if (distance[w]>=0.0f) {
+                        weight[w] = weights[r]*(float)FastMath.exp(-distance[w]/mindist);
+                        intens[w] = mapped[r][xs+nx*ys];
+                    } else {
+                        weight[w] = -1.0f;
+                        intens[w] = 0.0f;
+                    }
+                    w++;
                 }
-                w++;
+                result[x+nx*y] = weightedMedian(intens, weight);
+            } else {
+                // weighted average
+                double sum = 0.0f;
+                double den = 0.0f;
+                
+                w=0;
+                for (int xs=x-search;xs<=x+search;xs++) for (int ys=y-search;ys<=y+search;ys++) for (int r=0;r<nref;r++) { 
+                    if (distance[w]>=0.0f) {
+                        double weight = weights[r]*FastMath.exp(-distance[w]/mindist);
+                        sum += weight*mapped[r][xs+nx*ys];
+                        den += weight;
+                    }
+                    w++;
+                }
+                result[x+nx*y] = (float)(sum/den);
             }
-            result[x+nx*y] = (float)(sum/den);
 	    }
 		System.out.print("Done\n");
 	}
+	
+    private static final float weightedMedian(float[] val, float[] wgh) {
+	    float tmp;
+	    for (int n=0;n<val.length;n++) if (wgh[n]!=-1) {
+			for (int m=n+1;m<val.length;m++) if (wgh[m]!=-1) {
+			    // here we ignore the -1 values entirely
+				if (val[m]<val[n]) {
+					// switch place
+					tmp = val[n];
+					val[n] = val[m];
+					val[m] = tmp;
+					// switch weights
+					tmp = wgh[n];
+					wgh[n] = wgh[m];
+					wgh[m] = tmp;
+				}
+			}
+		}
+		float sum = 0.0f;
+		for (int n=0;n<val.length;n++) if (wgh[n]!=-1) {
+		    sum += wgh[n];
+		}
+		float half = 0.0f;
+		float med = 0.0f;
+		for (int n=0;n<val.length;n++) if (wgh[n]!=-1) {
+		    half += wgh[n];
+		    if (half>=0.5f*sum) {
+                if (n>0) {
+                    // weighted sum?
+                    med = ( (0.5f*sum-half+wgh[n])*val[n] + (half-0.5f*sum)*val[n-1] )/wgh[n];
+                } else {
+                    med = val[n];
+                }
+                n=val.length;
+            }
+        }
+        return med;
+	}	
+
 }
