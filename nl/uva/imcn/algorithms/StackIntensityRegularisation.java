@@ -11,6 +11,7 @@ import Jama.*;
  */
 public class StackIntensityRegularisation {
 	float[] image = null;
+	float[] foreground = null;
 	
 	int nx, ny, nz, nxyz;
 	float rx, ry, rz;
@@ -21,6 +22,7 @@ public class StackIntensityRegularisation {
 	
 	// set inputs
 	public final void setInputImage(float[] val) { image = val; }
+	public final void setForegroundImage(float[] val) { foreground = val; }
 	
 	public final void setVariationRatio(float val) { cutoff = val; }
 	
@@ -35,11 +37,51 @@ public class StackIntensityRegularisation {
 
 	public void execute() {
 	    
-	    // mask zero values
+	    // mask zero values or estimate background
 	    boolean[] mask = new boolean[nxyz];
-	    for (int xyz=0;xyz<nxyz;xyz++) 
-	        if (image[xyz]!=0) mask[xyz] = true;
-            else mask[xyz] = false;
+	    if (foreground==null) {
+            for (int xyz=0;xyz<nxyz;xyz++) 
+                if (image[xyz]!=0) mask[xyz] = true;
+                else mask[xyz] = false;
+        } else {
+            // build two histograms to find the most relevant threshold
+            // this is done globally, might need to be performed slice by slice instead
+            int bins = 200;
+            double[] hist0 = new double[bins];
+            double[] hist1 = new double[bins];
+		
+            for (int n=0;n<bins;n++) {
+                hist0[n] = 0;
+                hist1[n] = 0;
+            }
+            float min = 1e9f;
+            float max = -1e9f;
+            for (int xyz=0;xyz<nxyz;xyz++) {
+                if (image[xyz] > max) max = image[xyz];
+                if (image[xyz] < min) min = image[xyz];
+            }
+		
+            for (int xyz=0;xyz<nxyz;xyz++) {
+                // compute histogram within min, max (rest is ignored)
+                if (  (image[xyz] >= min )
+					&& (image[xyz] <= min + 1.0f/(float)bins*(max-min) ) ) {
+				        hist0[0]+=1.0-foreground[xyz];
+				        hist1[0]+=foreground[xyz];
+				}
+                for (int n=1;n<bins;n++) {
+                    if (  (image[xyz] >  min + (float)n/(float)bins*(max-min) )
+                        && (image[xyz] <= min + (float)(n+1)/(float)bins*(max-min) ) ) {
+                            hist0[n]+=1.0-foreground[xyz];
+                            hist1[n]+=foreground[xyz];	
+                    }
+                }
+            }
+            for (int xyz=0;xyz<nxyz;xyz++) {
+                int bin = Numerics.bounded( Numerics.round((image[xyz]-min)/(max-min)*bins), 0, bins-1);
+                if (hist1[bin]>hist0[bin]) mask[xyz] = true;
+                else mask[xyz] = false;
+            }
+        }
 	    
 	    // per slice:
 	    double[] differences = new double [nx*ny];
