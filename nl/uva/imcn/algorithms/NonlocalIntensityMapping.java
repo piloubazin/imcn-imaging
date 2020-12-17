@@ -13,6 +13,7 @@ public class NonlocalIntensityMapping {
 	float[] image = null;
 	float[][] reference = null;
 	float[][] mapped = null;
+	float[][] correl = null;
 	float[] weights = null;
 	
 	int nref = 0;
@@ -24,6 +25,7 @@ public class NonlocalIntensityMapping {
 	int patch = 2;
 	int search = 3;
 	boolean useMedian = false;
+	boolean useCorrelations = false;
 	
 	float[] result;
 	
@@ -56,11 +58,15 @@ public class NonlocalIntensityMapping {
 	public final float[] getMappedImage() { return result; }
 
 	public void execute2D() {
+
+	    // optionally, pre-compute patch correlations between reference and mapped contrast
+	    if (useCorrelations) precomputeReferenceMappedCorrelation();
 	    
 	    // look for neighbor patches following Coupe 2011
         int nw = (2*search+1)*(2*search+1)*nref;
         float[] distance = new float[nw];
-        
+        float[] corrdist = new float[nw];
+
         result = new float[nxyz];
         for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) if (image[x+nx*y]!=0) {
             float mindist = 1e9f;
@@ -85,6 +91,8 @@ public class NonlocalIntensityMapping {
                     } else {
                         distance[w] = -1.0f;
                     }
+                    if (useCorrelations) corrdist[w] = Numerics.abs(correl[r][xs+nx*ys]);
+                    else corrdist[w] = 1.0f;
                     w++;
                 } else {
                     distance[w] = -1.0f;
@@ -98,7 +106,7 @@ public class NonlocalIntensityMapping {
                 w=0;
                 for (int xs=x-search;xs<=x+search;xs++) for (int ys=y-search;ys<=y+search;ys++) for (int r=0;r<nref;r++) { 
                     if (distance[w]>=0.0f) {
-                        weight[w] = weights[r]*(float)FastMath.exp(-distance[w]/mindist);
+                        weight[w] = weights[r]*corrdist[w]*(float)FastMath.exp(-distance[w]/mindist);
                         intens[w] = mapped[r][xs+nx*ys];
                     } else {
                         weight[w] = -1.0f;
@@ -115,7 +123,7 @@ public class NonlocalIntensityMapping {
                 w=0;
                 for (int xs=x-search;xs<=x+search;xs++) for (int ys=y-search;ys<=y+search;ys++) for (int r=0;r<nref;r++) { 
                     if (distance[w]>=0.0f) {
-                        double weight = weights[r]*FastMath.exp(-distance[w]/mindist);
+                        double weight = weights[r]*corrdist[w]*FastMath.exp(-distance[w]/mindist);
                         sum += weight*mapped[r][xs+nx*ys];
                         den += weight;
                     }
@@ -165,4 +173,41 @@ public class NonlocalIntensityMapping {
         return med;
 	}	
 
+	private final void precomputeReferenceMappedCorrelation() {
+	    
+        correl = new float[nref][nxyz];
+        for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int r=0;r<nref;r++) if (reference[r][x+nx*y]!=0) {
+            correl[r][x+nx*y] = 0.0f;
+            
+            double meanref = 0.0;
+            double meanmap = 0.0;
+            double npatch = 0.0;
+            
+            for (int dx=-patch;dx<=patch;dx++) for (int dy=-patch;dy<=patch;dy++) {
+                if (x+dx>=0 && x+dx<nx && y+dy>=0 && y+dy<ny && reference[r][x+dx+nx*(y+dy)]!=0 && mapped[r][x+dx+nx*(y+dy)]!=0) {
+                    meanref += reference[r][x+dx+nx*(y+dy)];
+                    meanmap += mapped[r][x+dx+nx*(y+dy)];
+                    npatch++;
+                }
+            }
+            if (npatch>0) {
+                meanref /= npatch;
+                meanmap /= npatch;
+                
+                double prod = 0.0;
+                double varref = 0.0;
+                double varmap = 0.0;
+                for (int dx=-patch;dx<=patch;dx++) for (int dy=-patch;dy<=patch;dy++) {
+                    if (x+dx>=0 && x+dx<nx && y+dy>=0 && y+dy<ny && reference[r][x+dx+nx*(y+dy)]!=0 && mapped[r][x+dx+nx*(y+dy)]!=0) {
+                        prod += (reference[r][x+dx+nx*(y+dy)]-meanref)*(mapped[r][x+dx+nx*(y+dy)]-meanmap);
+                        varref += (reference[r][x+dx+nx*(y+dy)]-meanref)*(reference[r][x+dx+nx*(y+dy)]-meanref);
+                        varmap += (mapped[r][x+dx+nx*(y+dy)]-meanmap)*(mapped[r][x+dx+nx*(y+dy)]-meanmap);
+                    }
+                }
+                
+                correl[r][x+nx*y] = (float)(prod/FastMath.sqrt(varref*varmap));
+            }
+	    }
+	    return;
+	}
 }
