@@ -44,45 +44,54 @@ public class StackIntensityRegularisation {
             for (int xyz=0;xyz<nxyz;xyz++) 
                 if (image[xyz]!=0) mask[xyz] = true;
                 else mask[xyz] = false;
-        } else {
-            // build two histograms to find the most relevant threshold
-            // this is done globally, might need to be performed slice by slice instead
-            int bins = 200;
-            double[] hist0 = new double[bins];
-            double[] hist1 = new double[bins];
+        } else if (false) {
+            // build two histograms to find the most relevant threshold?
+            for (int z=0;z<nz;z++) {
+                // this is done slice by slice instead
+                int bins = 100;
+                double[] hist0 = new double[bins];
+                double[] hist1 = new double[bins];
 		
-            for (int n=0;n<bins;n++) {
-                hist0[n] = 0;
-                hist1[n] = 0;
-            }
-            float min = 1e9f;
-            float max = -1e9f;
-            for (int xyz=0;xyz<nxyz;xyz++) {
-                if (image[xyz] > max) max = image[xyz];
-                if (image[xyz] < min) min = image[xyz];
-            }
+                for (int n=0;n<bins;n++) {
+                    hist0[n] = 0;
+                    hist1[n] = 0;
+                }
+                float min = 1e9f;
+                float max = -1e9f;
+                for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+                    int xyz = x+nx*y+nx*ny*z;
+                    if (image[xyz] > max) max = image[xyz];
+                    if (image[xyz] < min) min = image[xyz];
+                }
 		
-            for (int xyz=0;xyz<nxyz;xyz++) {
-                // compute histogram within min, max (rest is ignored)
-                if (  (image[xyz] >= min )
+                for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+                    int xyz = x+nx*y+nx*ny*z;
+                    // compute histogram within min, max (rest is ignored)
+                    if (  (image[xyz] >= min )
 					&& (image[xyz] <= min + 1.0f/(float)bins*(max-min) ) ) {
 				        hist0[0]+=1.0-foreground[xyz];
 				        hist1[0]+=foreground[xyz];
-				}
-                for (int n=1;n<bins;n++) {
-                    if (  (image[xyz] >  min + (float)n/(float)bins*(max-min) )
-                        && (image[xyz] <= min + (float)(n+1)/(float)bins*(max-min) ) ) {
-                            hist0[n]+=1.0-foreground[xyz];
-                            hist1[n]+=foreground[xyz];	
+                    }
+                    for (int n=1;n<bins;n++) {
+                        if (  (image[xyz] >  min + (float)n/(float)bins*(max-min) )
+                            && (image[xyz] <= min + (float)(n+1)/(float)bins*(max-min) ) ) {
+                                hist0[n]+=1.0-foreground[xyz];
+                                hist1[n]+=foreground[xyz];	
+                        }
                     }
                 }
+                for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+                    int xyz = x+nx*y+nx*ny*z;
+                    int bin = Numerics.bounded( Numerics.round((image[xyz]-min)/(max-min)*bins), 0, bins-1);
+                    if (hist1[bin]>hist0[bin]) mask[xyz] = true;
+                    else mask[xyz] = false;
+                }
             }
-            for (int xyz=0;xyz<nxyz;xyz++) {
-                int bin = Numerics.bounded( Numerics.round((image[xyz]-min)/(max-min)*bins), 0, bins-1);
-                if (hist1[bin]>hist0[bin]) mask[xyz] = true;
+        } else {
+            for (int xyz=0;xyz<nxyz;xyz++) 
+                if (foreground[xyz]>0.5) mask[xyz] = true;
                 else mask[xyz] = false;
-            }
-        }
+        }            
 	    
 	    // per slice:
 	    double[] differences = new double [2*nx*ny];
@@ -100,7 +109,7 @@ public class StackIntensityRegularisation {
 	    
 	    int mid = Numerics.round(nz/2.0f);
 	    for (int z=mid+1;z<nz;z++) {
-	        System.out.println("Processing slice "+z);
+	        System.out.print("Processing slice "+z);
 	        ndiff = 0;
 	        for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
 	            int xyz = x+nx*y+nx*ny*z;
@@ -214,8 +223,8 @@ public class StackIntensityRegularisation {
                     }
                     double rsquare = 1.0;
                     if (variance>0) rsquare = Numerics.max(1.0 - (residual/variance), 0.0);
-                    //System.out.println("bias: "+val.get(0,0));
-                    //System.out.println("scaling: "+val.get(1,0));
+                    System.out.print(" bias: "+val.get(0,0));
+                    System.out.println(" scaling: "+val.get(1,0));
                     //System.out.println("residuals R^2: "+rsquare);
                     if (val.get(0,0)>maxbias) { maxbias = val.get(0,0); maxbiasid = z; }
                     if (val.get(0,0)<minbias) { minbias = val.get(0,0); minbiasid = z; }
@@ -230,7 +239,7 @@ public class StackIntensityRegularisation {
             }
         }
 	    for (int z=mid-1;z>=0;z--) {
-	        System.out.println("Processing slice "+z);
+	        System.out.print("Processing slice "+z);
 	        ndiff = 0;
 	        for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
 	            int xyz = x+nx*y+nx*ny*z;
@@ -344,8 +353,8 @@ public class StackIntensityRegularisation {
                     }
                     double rsquare = 1.0;
                     if (variance>0) rsquare = Numerics.max(1.0 - (residual/variance), 0.0);
-                    //System.out.println("bias: "+val.get(0,0));
-                    //System.out.println("scaling: "+val.get(1,0));
+                    System.out.print(" bias: "+val.get(0,0));
+                    System.out.println(" scaling: "+val.get(1,0));
                     //System.out.println("residuals R^2: "+rsquare);
                     if (val.get(0,0)>maxbias) { maxbias = val.get(0,0); maxbiasid = z; }
                     if (val.get(0,0)<minbias) { minbias = val.get(0,0); minbiasid = z; }
