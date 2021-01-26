@@ -58,6 +58,7 @@ public class FastMarchingPhaseUnwrapping {
 	public  static final String[] postProcessTypes = {"none", "TV-approximation", "TV-residuals"};;
     private     int             nquadrant = 3;      // number of quadrants to seed the unwrapping
     private     float           tvscale = 0.0f;     // factor for optional post-processing
+    private     boolean         rescale = true;     // phase rescaling
 	
 	private float[] correctImage;
 	private int[]   countImage;
@@ -77,6 +78,7 @@ public class FastMarchingPhaseUnwrapping {
 	public final void setTVScale(float val) { tvscale = val; }
 	public final void setTVPostProcessing(String val) { postprocess = val; }
 	public final void setQuadrantNumber(int val) { nquadrant = val; }
+	public final void setRescalePhase(boolean val) { rescale = val; }
 	
 	public final void setDimensions(int x, int y, int z) { nx=x; ny=y; nz=z; nxyz=nx*ny*nz; }
 	public final void setDimensions(int[] dim) { nx=dim[0]; ny=dim[1]; nz=dim[2]; nxyz=nx*ny*nz; }
@@ -145,19 +147,23 @@ public class FastMarchingPhaseUnwrapping {
 		}
 		if (debug) System.out.print("initialization\n");
 		
-		// get the min-max scale of the phase image
-		float Pmin = 1e13f;
-		float Pmax = -1e13f;
-		//float Mmax = -1e13f;
 		phase = inputImage;
-		//magnitude = magImage;
-		for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
-		    if (phase[xyz]<Pmin) Pmin = phase[xyz];
-		    if (phase[xyz]>Pmax) Pmax = phase[xyz];
-		    //if (magnitude[xyz]>Mmax) Mmax = magnitude[xyz];
-		}
-		//double Pscale = (Pmax-Pmin)/(2.0*FastMath.PI);
+        float Pmin = -(float)FastMath.PI;
+		float Pmax = (float)FastMath.PI;
 		
+		if (rescale) {
+            // get the min-max scale of the phase image
+            Pmin = 1e13f;
+            Pmax = -1e13f;
+            //float Mmax = -1e13f;
+            //magnitude = magImage;
+            for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
+                if (phase[xyz]<Pmin) Pmin = phase[xyz];
+                if (phase[xyz]>Pmax) Pmax = phase[xyz];
+                //if (magnitude[xyz]>Mmax) Mmax = magnitude[xyz];
+            }
+            //double Pscale = (Pmax-Pmin)/(2.0*FastMath.PI);
+		}
 		// simplify: bring everything in [0,1] internally
 		for (int xyz=0;xyz<nxyz;xyz++) phase[xyz] = (phase[xyz]-Pmin)/(Pmax-Pmin);
 					        		

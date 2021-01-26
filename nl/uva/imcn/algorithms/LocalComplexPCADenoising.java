@@ -29,6 +29,7 @@ public class LocalComplexPCADenoising {
 	private     int         ngbSize = 5;
 	//private     int         winSize = -1;
 	private     boolean     unwrap = true;
+	private     boolean     rescale = true;
 	private     boolean     eigen = false;
 	//private     boolean     tvmag = false;
 	//private     boolean     tvphs = false;
@@ -74,6 +75,7 @@ public class LocalComplexPCADenoising {
 	public final void setPatchSize(int in) { ngbSize = in; }
 	//public final void setWindowSize(int in) { winSize = in; }
 	public final void setUnwrapPhase(boolean in) { unwrap = in; }
+	public final void setRescalePhase(boolean in) { rescale = in; }
 	public final void setProcessSlabIn2D(boolean in) { slab2D = in; }
 	public final void setRandomMatrixTheory(boolean in) { randomMatrix = in; }
 	
@@ -154,21 +156,22 @@ public class LocalComplexPCADenoising {
 		for (int i=0;i<nimg;i++) phsscale[i] = 1.0;
 		float[][] tvimgphs = null;
         if (unwrap) {
-            // renormalize phase
-            float[] phsmin = new float[nimg];
-            float[] phsmax = new float[nimg];
-            for (int i=0;i<nimg;i++) {
-                phsmin[i] = invphs[i][0];
-                phsmax[i] = invphs[i][0];
-                for (int t=0;t<nt;t++) {
-                    for (int xyz=0;xyz<nxyz;xyz++) {
-                        if (invphs[t+i*nt][xyz]<phsmin[i]) phsmin[i] = invphs[t+i*nt][xyz];
-                        if (invphs[t+i*nt][xyz]>phsmax[i]) phsmax[i] = invphs[t+i*nt][xyz];
+            if (rescale) {
+                // renormalize phase
+                float[] phsmin = new float[nimg];
+                float[] phsmax = new float[nimg];
+                for (int i=0;i<nimg;i++) {
+                    phsmin[i] = invphs[i][0];
+                    phsmax[i] = invphs[i][0];
+                    for (int t=0;t<nt;t++) {
+                        for (int xyz=0;xyz<nxyz;xyz++) {
+                            if (invphs[t+i*nt][xyz]<phsmin[i]) phsmin[i] = invphs[t+i*nt][xyz];
+                            if (invphs[t+i*nt][xyz]>phsmax[i]) phsmax[i] = invphs[t+i*nt][xyz];
+                        }
                     }
+                    phsscale[i] = (phsmax[i]-phsmin[i])/(2.0*FastMath.PI);
                 }
-                phsscale[i] = (phsmax[i]-phsmin[i])/(2.0*FastMath.PI);
-            }
-            
+            }            
             // unwrap phase and remove TV global variations
             //if (tvphs) {
             tvimgphs = new float[nimg*nt][];
@@ -182,6 +185,7 @@ public class LocalComplexPCADenoising {
                     unwrap.setPhaseImage(phs);
                     unwrap.setDimensions(nx,ny,nz);
                     unwrap.setResolutions(rx,ry,rz);
+                    unwrap.setRescalePhase(rescale);
                     unwrap.setTVScale(0.33f);
                     unwrap.setTVPostProcessing("TV-approximation");
                     unwrap.execute();
