@@ -100,6 +100,8 @@ public class FuzzyCmeans {
    
     public final int[] getClassification() { return classification; }
    
+    public final float[] getClassImage() { return image; }
+   
     public final void execute() {		
 		
         // image range
@@ -587,5 +589,30 @@ public class FuzzyCmeans {
 		}   
  		return id;
 	} // computeCentroidOrder
+
+	/** 
+	 *	build a piecewise-linear intensity map based on centroids
+	 */
+	public final void interpolateCentroidIntensity() {
+	    for (int xyz=0;xyz<nxyz;xyz++) {
+			if (mask[xyz]) {
+			    float intens = 0.0f;
+			    if (image[xyz]<centroids[id[1]-1]) {
+			        //intens = 2.0f - (centroids[id[2]-1]-image[xyz])/(centroids[id[2]-1]-centroids[id[1]-1]);
+			        intens = 0.0f + Numerics.max(0.001f,(image[xyz] - Imin)/(centroids[id[1]-1]-Imin));
+			    } else if (image[xyz]>=centroids[id[clusters]-1]) {
+			        //intens = clusters-1.0f + (image[xyz]-centroids[id[clusters-1]-1])/(centroids[id[clusters]-1]-centroids[id[clusters-1]-1]);
+			        intens = clusters + Numerics.min(0.999f,(image[xyz]-centroids[id[clusters]-1])/(Imax-centroids[id[clusters]-1]));
+			    } else {
+			        for (int k=0;k<clusters-1;k++) {
+                        if (image[xyz]>=centroids[id[k+1]-1] && image[xyz]<centroids[id[k+2]-1]) {
+                            intens = (k+1.0f) + (image[xyz]-centroids[id[k+1]-1])/(centroids[id[k+2]-1]-centroids[id[k+1]-1]);
+                        }
+                    }
+                }
+			    image[xyz] = intens;
+            }
+        }
+	}
 
 }
