@@ -63,6 +63,12 @@ public class ConditionalShapeSegmentation {
 	// trust more the intensities when more are available?
 	private boolean averageIntensityPriors = true;
 	
+	// weight up or down intensities compared to spatial priors?
+	private float intensityImportance = 1.0f;
+	
+	// use only a subset of intensities per structure?
+	private boolean[][] contrastList = null;
+	
 	private final float INF = 1e9f;
 	private final float ISQRT2 = (float)(1.0/FastMath.sqrt(2.0));
 	private final float ISQRT3 = (float)(1.0/FastMath.sqrt(2.0));
@@ -460,6 +466,12 @@ public class ConditionalShapeSegmentation {
 	    }
 	}
 	
+	public final void setContrastList(int[] cnt) {
+	    contrastList = new boolean[nobj-nbg][nc];
+	    for (int i=0;i<nobj-nbg;i++) for (int c=0;c<nc;c++) {
+	        contrastList[i][c] = (cnt[i*nc+c]>0);
+	    }
+	}
 	public final void setOptions(boolean mB, boolean cB, boolean cA, boolean sP, boolean mP) {
 	    modelBackground = mB;
 	    cancelBackground = cB;
@@ -482,6 +494,8 @@ public class ConditionalShapeSegmentation {
 	//public final void setCorrectSkeletonTopology(boolean val) { topoParam=val; }
 	//public final void setTopologyLUTdirectory(String val) { lutdir = val; }
     public final void setAverageIntensityPriors(boolean val) { averageIntensityPriors=val; }
+
+    public final void setIntensityImportancePrior(float val) { intensityImportance=val; }
 	//
 	public final void setAtlasDimensions(int x, int y, int z) { nax=x; nay=y; naz=z; naxyz=nax*nay*naz; }
 	public final void setAtlasDimensions(int[] dim) { nax=dim[0]; nay=dim[1]; naz=dim[2]; naxyz=nax*nay*naz; }
@@ -2035,19 +2049,32 @@ public class ConditionalShapeSegmentation {
 		intensityLabels = new int[nbest][ndata];
 		for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
             double[][] likelihood = new double[nobj][nobj];
+            System.out.print("contrasts: ");
             for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
-               likelihood[obj1][obj2] = 1.0;
-               for (int c=0;c<nc;c++) {
-                   double val = 0.0;
-                   for (int best=0;best<nbest;best++) {
-                       if (separateIntensLabels[c][best][idmap[xyz]]==100*(obj1+1)+(obj2+1)) {
-                           val = separateIntensProbas[c][best][idmap[xyz]];
-                           best = nbest;
-                       }
-                   }
-                   likelihood[obj1][obj2] *= val;
-               }
+                likelihood[obj1][obj2] = 1.0;
+                int ncontrast = 0;
+                for (int c=0;c<nc;c++) {
+                    // if we use all contrasts or if the right non-bg contrasts are used
+                    if (contrastList==null
+                         || (obj1>=nbg && contrastList[obj1-nbg][c]) 
+                         || (obj2>=nbg && contrastList[obj2-nbg][c])
+                         || (obj1<nbg && obj2<nbg) ) {
+                        System.out.print(obj1+"-"+obj2+":"+c+", ");
+                        double val = 0.0;
+                        for (int best=0;best<nbest;best++) {
+                            if (separateIntensLabels[c][best][idmap[xyz]]==100*(obj1+1)+(obj2+1)) {
+                                val = separateIntensProbas[c][best][idmap[xyz]];
+                                best = nbest;
+                            }
+                        }
+                        likelihood[obj1][obj2] *= val;
+                        ncontrast++;
+                    }
+                }
+                likelihood[obj1][obj2] = FastMath.pow(likelihood[obj1][obj2], intensityImportance/ncontrast);
             }
+            System.out.print("\n");
+            
             for (int best=0;best<nbest;best++) {
                 int best1=0;
                 int best2=0;
@@ -2116,10 +2143,13 @@ public class ConditionalShapeSegmentation {
                             best=nbest;
                         }
                     }
+                    // now the intensity weights are computed beforehand, as the number of contrasts may vary per structure
                     if (averageIntensityPriors) {
-                        posteriors[obj1][obj2] = posteriors[obj1][obj2]*FastMath.pow(intensPrior,1.0/nc);
+                        //posteriors[obj1][obj2] = posteriors[obj1][obj2]*FastMath.pow(intensPrior,intensityImportance/nc);
+                        posteriors[obj1][obj2] = posteriors[obj1][obj2]*intensPrior;
                     } else {
-                        posteriors[obj1][obj2] = FastMath.pow(posteriors[obj1][obj2]*intensPrior,2.0/(nc+1.0));
+                        //posteriors[obj1][obj2] = FastMath.pow(posteriors[obj1][obj2]*FastMath.pow(intensPrior,intensityImportance),2.0/(intensityImportance*nc+1.0));
+                        posteriors[obj1][obj2] = FastMath.pow(posteriors[obj1][obj2]*FastMath.pow(intensPrior,intensityImportance*nc),2.0/(intensityImportance*nc+1.0));
                     }
                 }
             }
