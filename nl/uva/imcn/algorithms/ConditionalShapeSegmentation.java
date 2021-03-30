@@ -2049,7 +2049,7 @@ public class ConditionalShapeSegmentation {
 		intensityLabels = new int[nbest][ndata];
 		for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
             double[][] likelihood = new double[nobj][nobj];
-            System.out.print("contrasts: ");
+            //System.out.print("contrasts: ");
             for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
                 likelihood[obj1][obj2] = 1.0;
                 int ncontrast = 0;
@@ -2059,7 +2059,7 @@ public class ConditionalShapeSegmentation {
                          || (obj1>=nbg && contrastList[obj1-nbg][c]) 
                          || (obj2>=nbg && contrastList[obj2-nbg][c])
                          || (obj1<nbg && obj2<nbg) ) {
-                        System.out.print(obj1+"-"+obj2+":"+c+", ");
+                        //System.out.print(obj1+"-"+obj2+":"+c+", ");
                         double val = 0.0;
                         for (int best=0;best<nbest;best++) {
                             if (separateIntensLabels[c][best][idmap[xyz]]==100*(obj1+1)+(obj2+1)) {
@@ -2073,7 +2073,7 @@ public class ConditionalShapeSegmentation {
                 }
                 likelihood[obj1][obj2] = FastMath.pow(likelihood[obj1][obj2], intensityImportance/ncontrast);
             }
-            System.out.print("\n");
+            //System.out.print("\n");
             
             for (int best=0;best<nbest;best++) {
                 int best1=0;
