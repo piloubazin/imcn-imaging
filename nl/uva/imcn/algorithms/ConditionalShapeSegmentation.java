@@ -55,6 +55,8 @@ public class ConditionalShapeSegmentation {
 	private boolean rescaleIntensities = true;
 	private boolean modelHistogram = true;
 	private boolean rescaleHistograms = true;
+	private boolean prelogHistogram = true;
+	private boolean postlogHistogram = false;
 	
 	// more things to tune? small & variable structures seem to vanish a bit fast
 	private boolean scalePriors = true;
@@ -82,6 +84,7 @@ public class ConditionalShapeSegmentation {
 	private double[][][] condmin = null;
 	private double[][][] condmax = null;
 	private int nbins=200;
+	private float histogramSpread = 1.0f;
 	
 	private float[][] avgAtlasImages;
 	private float[][] avgTargetImages;
@@ -771,8 +774,11 @@ public class ConditionalShapeSegmentation {
                     System.out.print("bg size: "+roisize+"\n");
                     fcm.setMaskImage(roi);
                     fcm.setClusterNumber(nbg);
-                    fcm.setSmoothing(0.01f);
+                    fcm.setSmoothing(0.001f);
+                    fcm.setMaxDist(0.001f);
+                    fcm.setMaxIter(150);
                     // hard-coded prior for R1 maps... not great
+                    /* remove?
                     if (nbg==2) {
                         float[] t1prior = {0.25f, 0.75f};
                         fcm.setInitCentroids(t1prior);
@@ -783,6 +789,7 @@ public class ConditionalShapeSegmentation {
                         fcm.setInitCentroids(t1prior);
                         fcm.setMaxIter(0);
                     }
+                    */
                     fcm.execute();
                     int[] classif = fcm.getClassification();
                     for (int n=0;n<nbg;n++) {
@@ -1066,16 +1073,25 @@ public class ConditionalShapeSegmentation {
                                 }
                             }
                         }
+                        // log before smoothing?
+                        if (prelogHistogram) {
+                            for (int bin=0;bin<nbins;bin++) {
+                                condhistogram[c][obj1][obj2][bin] = FastMath.log(1.0+condhistogram[c][obj1][obj2][bin]);
+                            }
+                        }
                         // smooth histograms to avoid sharp edge effects
-                        double var = 1.0*1.0;
+                        double var = histogramSpread*histogramSpread;
                         double[] tmphist = new double[nbins];
                         for (int bin1=0;bin1<nbins;bin1++) {
                             for (int bin2=0;bin2<nbins;bin2++) {
                                 tmphist[bin1] += condhistogram[c][obj1][obj2][bin2]*FastMath.exp(-0.5*(bin1-bin2)*(bin1-bin2)/var);
                             }
                         }
-                        for (int bin=0;bin<nbins;bin++) condhistogram[c][obj1][obj2][bin] = tmphist[bin];
-                        
+                        if (postlogHistogram) {
+                            for (int bin=0;bin<nbins;bin++) condhistogram[c][obj1][obj2][bin] = FastMath.log(1.0+tmphist[bin]);
+                        } else {
+                            for (int bin=0;bin<nbins;bin++) condhistogram[c][obj1][obj2][bin] = tmphist[bin];
+                        }
                         // normalize: sum over count x spread = 1
                         double sum = 0.0;
                         for (int bin=0;bin<nbins;bin++) sum += condhistogram[c][obj1][obj2][bin];   
@@ -1680,7 +1696,7 @@ public class ConditionalShapeSegmentation {
                         }
                     }
                     // smooth histograms to avoid sharp edge effects
-                    double var = 1.0*1.0;
+                    double var = histogramSpread*histogramSpread;
                     double[] tmphist = new double[nbins];
                     for (int bin1=0;bin1<nbins;bin1++) {
                         for (int bin2=0;bin2<nbins;bin2++) {
@@ -2252,7 +2268,7 @@ public class ConditionalShapeSegmentation {
         for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
             for (int tc=0;tc<ntc;tc++) {
                 // smooth histograms to avoid sharp edge effects
-                double var = 1.0*1.0;
+                double var = histogramSpread*histogramSpread;
                 double[] tmphist = new double[nbins];
                 for (int bin1=0;bin1<nbins;bin1++) {
                     for (int bin2=0;bin2<nbins;bin2++) {
