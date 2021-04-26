@@ -55,7 +55,7 @@ public class ConditionalShapeSegmentation {
 	private boolean rescaleIntensities = true;
 	private boolean modelHistogram = true;
 	private boolean rescaleHistograms = true;
-	private boolean prelogHistogram = true;
+	private boolean prelogHistogram = false;
 	private boolean postlogHistogram = false;
 	
 	// more things to tune? small & variable structures seem to vanish a bit fast
@@ -491,6 +491,10 @@ public class ConditionalShapeSegmentation {
 	
 	public final void setHistogramModeling(boolean val) {
 	    modelHistogram = val;
+	}
+	
+	public final void setHistogramSmoothing(float val) {
+	    histogramSpread = val;
 	}
 	
 	//public static final void setFollowSkeleton(boolean val) { skelParam=val; }
@@ -1080,17 +1084,19 @@ public class ConditionalShapeSegmentation {
                             }
                         }
                         // smooth histograms to avoid sharp edge effects
-                        double var = histogramSpread*histogramSpread;
-                        double[] tmphist = new double[nbins];
-                        for (int bin1=0;bin1<nbins;bin1++) {
-                            for (int bin2=0;bin2<nbins;bin2++) {
-                                tmphist[bin1] += condhistogram[c][obj1][obj2][bin2]*FastMath.exp(-0.5*(bin1-bin2)*(bin1-bin2)/var);
+                        if (histogramSpread>0) {
+                            double var = histogramSpread*histogramSpread;
+                            double[] tmphist = new double[nbins];
+                            for (int bin1=0;bin1<nbins;bin1++) {
+                                for (int bin2=0;bin2<nbins;bin2++) {
+                                    tmphist[bin1] += condhistogram[c][obj1][obj2][bin2]*FastMath.exp(-0.5*(bin1-bin2)*(bin1-bin2)/var);
+                                }
                             }
-                        }
-                        if (postlogHistogram) {
-                            for (int bin=0;bin<nbins;bin++) condhistogram[c][obj1][obj2][bin] = FastMath.log(1.0+tmphist[bin]);
-                        } else {
-                            for (int bin=0;bin<nbins;bin++) condhistogram[c][obj1][obj2][bin] = tmphist[bin];
+                            if (postlogHistogram) {
+                                for (int bin=0;bin<nbins;bin++) condhistogram[c][obj1][obj2][bin] = FastMath.log(1.0+tmphist[bin]);
+                            } else {
+                                for (int bin=0;bin<nbins;bin++) condhistogram[c][obj1][obj2][bin] = tmphist[bin];
+                            }
                         }
                         // normalize: sum over count x spread = 1
                         double sum = 0.0;
