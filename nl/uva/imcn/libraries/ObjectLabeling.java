@@ -2226,5 +2226,117 @@ public class ObjectLabeling {
 	   
 		return label;
 	}
+    /**
+	 *	Connected components of an object.
+     *  3D images: 26-neighborhood
+     */
+    public static final int[] connected26Object3D(int img[], int nx, int ny, int nz) {
+		int Nlabel = 0;
+		int[]   label = new int[nx*ny*nz];
+		int[]       lb = new int[MaxObject];
+		int lbMin;
+		int Nlb;
+		int[]   connect = new int[26];
+		int Nconnect;
+		int AddLabel;
+		
+		for (int xyz=0;xyz<nx*ny*nz;xyz++)
+			label[xyz] = 0;
+		
+		lb[0] = 0;
+		Nlabel = 1;
+		for (int x=0;x<nx;x++) {
+			for (int y=0;y<ny;y++) {
+				for (int z=0;z<nz;z++) {
+					int xyz = x + nx*y + nx*ny*z;
+					if (img[xyz]>0) {
+                        // object point: neighbors ?
+                        Nconnect = 0;
+                        for (int i=-1;i<=1;i++) for (int j=-1;j<=1;j++) for (int k=-1;k<=1;k++) {
+                            if ( (x+i>=0) && (x+i<nx) && (y+j>=0) && (y+j<ny) && (z+k>=0) && (z+k<nz) ) {
+								if (label[xyz+i+nx*j+nx*ny*k] > 0) {
+									connect[Nconnect] = lb[ label[xyz+i+nx*j+nx*ny*k] ];
+									Nconnect++;
+								}
+							}
+                        }
+                        // if connected values, find the smallest lb label and attribute it
+                        // to all others (-> join labels)
+                        if (Nconnect>0) {
+                            //printf("c:%d",Nconnect);
+                            lbMin = lb[connect[0]];
+                            for (int l=1;l<Nconnect;l++) lbMin = Math.min(lbMin,lb[connect[l]]);
+                            for (int l=0;l<Nconnect;l++) lb[connect[l]] = lbMin;
+                            label[xyz] = lbMin;
+                        } else {
+                            // new, unconnected region
+                            label[xyz] = Nlabel;
+                            lb[Nlabel] = Nlabel;
+                            //printf("l:%d", Nlabel);
+                            Nlabel++;
+							// check if the number of labels is above the threshold
+							if (Nlabel>=lb.length-1) {
+								int[] tmp = new int[2*lb.length];
+								for (int n=0;n<Nlabel;n++) tmp[n] = lb[n];
+								lb = tmp;
+							}
+                        }
+                    }
+                }
+            }
+        }
+        // only one level of labels
+        for (int k=1;k<Nlabel;k++) {
+            int c = k;
+            while (lb[c]!=c) c = lb[c];
+            lb[k] = c;
+        }
+		// count the valid labels and rearrange labels to have regular increment
+		Nlb = 0;
+		int[] lb2 = new int[Nlabel];
+		lb2[0] = 0;
+		for (int k=1;k<Nlabel;k++) {
+			if (lb[k]==k) {
+				Nlb++;
+				lb2[k] = Nlb;
+			}
+		}
+		// check for problems ?
+		for (int x=0;x<nx;x++) {
+			for (int y=0;y<ny;y++) {
+                for (int z=0;z<nz;z++) {
+					int xyz = x + nx*y + nx*ny*z;
+					if (lb2[ lb[ label[xyz] ] ]>0) {
+						for (int i=-1;i<=1;i++) for (int j=-1;j<=1;j++) for (int k=-1;k<=1;k++) {
+							if ( (x+i>=0) && (x+i<nx) && (y+j>=0) && (y+j<ny) && (z+k>=0) && (z+k<nz) ) {
+								if (lb2[ lb[ label[xyz+i+nx*j+nx*ny*k] ] ]>0) {
+									if (lb2[ lb[ label[xyz+i+nx*j+nx*ny*k] ] ]>lb2[ lb[ label[xyz] ] ]) {
+										//System.out.print("labelling problem!");
+										int badLb = lb2[ lb[ label[xyz+i+nx*j+nx*ny*k] ] ];
+										lb2[ lb[ label[xyz+i+nx*j+nx*ny*k] ] ] = lb2[ lb[ label[xyz] ] ];
+										// if there are higher labels, decrease them
+										for (int n=1;n<Nlabel;n++) {
+											if (lb2[n] > badLb) lb2[n]--;
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		
+		// copy on label image
+        for (int xyz=0;xyz<nx*ny*nz;xyz++) {
+			label[xyz] = lb2[ lb[ label[xyz] ] ];
+        }
+        // clean up
+        lb = null;
+		lb2 = null;
+        connect = null;
+	   
+		return label;
+    }
 	
 }
