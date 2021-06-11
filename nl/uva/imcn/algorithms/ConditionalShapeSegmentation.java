@@ -55,6 +55,8 @@ public class ConditionalShapeSegmentation {
 	private boolean rescaleIntensities = true;
 	private boolean modelHistogram = true;
 	private boolean rescaleHistograms = true;
+	private boolean prelogHistogram = false;
+	private boolean postlogHistogram = false;
 	
 	// more things to tune? small & variable structures seem to vanish a bit fast
 	private boolean scalePriors = true;
@@ -62,6 +64,12 @@ public class ConditionalShapeSegmentation {
 	
 	// trust more the intensities when more are available?
 	private boolean averageIntensityPriors = true;
+	
+	// weight up or down intensities compared to spatial priors?
+	private float intensityImportance = 1.0f;
+	
+	// use only a subset of intensities per structure?
+	private boolean[][] contrastList = null;
 	
 	private final float INF = 1e9f;
 	private final float ISQRT2 = (float)(1.0/FastMath.sqrt(2.0));
@@ -76,6 +84,7 @@ public class ConditionalShapeSegmentation {
 	private double[][][] condmin = null;
 	private double[][][] condmax = null;
 	private int nbins=200;
+	private float histogramSpread = 1.0f;
 	
 	private float[][] avgAtlasImages;
 	private float[][] avgTargetImages;
@@ -460,6 +469,12 @@ public class ConditionalShapeSegmentation {
 	    }
 	}
 	
+	public final void setContrastList(int[] cnt) {
+	    contrastList = new boolean[nobj-nbg][nc];
+	    for (int i=0;i<nobj-nbg;i++) for (int c=0;c<nc;c++) {
+	        contrastList[i][c] = (cnt[i*nc+c]>0);
+	    }
+	}
 	public final void setOptions(boolean mB, boolean cB, boolean cA, boolean sP, boolean mP) {
 	    modelBackground = mB;
 	    cancelBackground = cB;
@@ -478,10 +493,16 @@ public class ConditionalShapeSegmentation {
 	    modelHistogram = val;
 	}
 	
+	public final void setHistogramSmoothing(float val) {
+	    histogramSpread = val;
+	}
+	
 	//public static final void setFollowSkeleton(boolean val) { skelParam=val; }
 	//public final void setCorrectSkeletonTopology(boolean val) { topoParam=val; }
 	//public final void setTopologyLUTdirectory(String val) { lutdir = val; }
     public final void setAverageIntensityPriors(boolean val) { averageIntensityPriors=val; }
+
+    public final void setIntensityImportancePrior(float val) { intensityImportance=val; }
 	//
 	public final void setAtlasDimensions(int x, int y, int z) { nax=x; nay=y; naz=z; naxyz=nax*nay*naz; }
 	public final void setAtlasDimensions(int[] dim) { nax=dim[0]; nay=dim[1]; naz=dim[2]; naxyz=nax*nay*naz; }
@@ -757,8 +778,11 @@ public class ConditionalShapeSegmentation {
                     System.out.print("bg size: "+roisize+"\n");
                     fcm.setMaskImage(roi);
                     fcm.setClusterNumber(nbg);
-                    fcm.setSmoothing(0.01f);
+                    fcm.setSmoothing(0.001f);
+                    fcm.setMaxDist(0.001f);
+                    fcm.setMaxIter(150);
                     // hard-coded prior for R1 maps... not great
+                    /* remove?
                     if (nbg==2) {
                         float[] t1prior = {0.25f, 0.75f};
                         fcm.setInitCentroids(t1prior);
@@ -769,6 +793,7 @@ public class ConditionalShapeSegmentation {
                         fcm.setInitCentroids(t1prior);
                         fcm.setMaxIter(0);
                     }
+                    */
                     fcm.execute();
                     int[] classif = fcm.getClassification();
                     for (int n=0;n<nbg;n++) {
@@ -1052,16 +1077,27 @@ public class ConditionalShapeSegmentation {
                                 }
                             }
                         }
-                        // smooth histograms to avoid sharp edge effects
-                        double var = 1.0*1.0;
-                        double[] tmphist = new double[nbins];
-                        for (int bin1=0;bin1<nbins;bin1++) {
-                            for (int bin2=0;bin2<nbins;bin2++) {
-                                tmphist[bin1] += condhistogram[c][obj1][obj2][bin2]*FastMath.exp(-0.5*(bin1-bin2)*(bin1-bin2)/var);
+                        // log before smoothing?
+                        if (prelogHistogram) {
+                            for (int bin=0;bin<nbins;bin++) {
+                                condhistogram[c][obj1][obj2][bin] = FastMath.log(1.0+condhistogram[c][obj1][obj2][bin]);
                             }
                         }
-                        for (int bin=0;bin<nbins;bin++) condhistogram[c][obj1][obj2][bin] = tmphist[bin];
-                        
+                        // smooth histograms to avoid sharp edge effects
+                        if (histogramSpread>0) {
+                            double var = histogramSpread*histogramSpread;
+                            double[] tmphist = new double[nbins];
+                            for (int bin1=0;bin1<nbins;bin1++) {
+                                for (int bin2=0;bin2<nbins;bin2++) {
+                                    tmphist[bin1] += condhistogram[c][obj1][obj2][bin2]*FastMath.exp(-0.5*(bin1-bin2)*(bin1-bin2)/var);
+                                }
+                            }
+                            if (postlogHistogram) {
+                                for (int bin=0;bin<nbins;bin++) condhistogram[c][obj1][obj2][bin] = FastMath.log(1.0+tmphist[bin]);
+                            } else {
+                                for (int bin=0;bin<nbins;bin++) condhistogram[c][obj1][obj2][bin] = tmphist[bin];
+                            }
+                        }
                         // normalize: sum over count x spread = 1
                         double sum = 0.0;
                         for (int bin=0;bin<nbins;bin++) sum += condhistogram[c][obj1][obj2][bin];   
@@ -1666,7 +1702,7 @@ public class ConditionalShapeSegmentation {
                         }
                     }
                     // smooth histograms to avoid sharp edge effects
-                    double var = 1.0*1.0;
+                    double var = histogramSpread*histogramSpread;
                     double[] tmphist = new double[nbins];
                     for (int bin1=0;bin1<nbins;bin1++) {
                         for (int bin2=0;bin2<nbins;bin2++) {
@@ -2035,19 +2071,32 @@ public class ConditionalShapeSegmentation {
 		intensityLabels = new int[nbest][ndata];
 		for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
             double[][] likelihood = new double[nobj][nobj];
+            //System.out.print("contrasts: ");
             for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
-               likelihood[obj1][obj2] = 1.0;
-               for (int c=0;c<nc;c++) {
-                   double val = 0.0;
-                   for (int best=0;best<nbest;best++) {
-                       if (separateIntensLabels[c][best][idmap[xyz]]==100*(obj1+1)+(obj2+1)) {
-                           val = separateIntensProbas[c][best][idmap[xyz]];
-                           best = nbest;
-                       }
-                   }
-                   likelihood[obj1][obj2] *= val;
-               }
+                likelihood[obj1][obj2] = 1.0;
+                int ncontrast = 0;
+                for (int c=0;c<nc;c++) {
+                    // if we use all contrasts or if the right non-bg contrasts are used
+                    if (contrastList==null
+                         || (obj1>=nbg && contrastList[obj1-nbg][c]) 
+                         || (obj2>=nbg && contrastList[obj2-nbg][c])
+                         || (obj1<nbg && obj2<nbg) ) {
+                        //System.out.print(obj1+"-"+obj2+":"+c+", ");
+                        double val = 0.0;
+                        for (int best=0;best<nbest;best++) {
+                            if (separateIntensLabels[c][best][idmap[xyz]]==100*(obj1+1)+(obj2+1)) {
+                                val = separateIntensProbas[c][best][idmap[xyz]];
+                                best = nbest;
+                            }
+                        }
+                        likelihood[obj1][obj2] *= val;
+                        ncontrast++;
+                    }
+                }
+                likelihood[obj1][obj2] = FastMath.pow(likelihood[obj1][obj2], intensityImportance/ncontrast);
             }
+            //System.out.print("\n");
+            
             for (int best=0;best<nbest;best++) {
                 int best1=0;
                 int best2=0;
@@ -2116,10 +2165,13 @@ public class ConditionalShapeSegmentation {
                             best=nbest;
                         }
                     }
+                    // now the intensity weights are computed beforehand, as the number of contrasts may vary per structure
                     if (averageIntensityPriors) {
-                        posteriors[obj1][obj2] = posteriors[obj1][obj2]*FastMath.pow(intensPrior,1.0/nc);
+                        //posteriors[obj1][obj2] = posteriors[obj1][obj2]*FastMath.pow(intensPrior,intensityImportance/nc);
+                        posteriors[obj1][obj2] = posteriors[obj1][obj2]*intensPrior;
                     } else {
-                        posteriors[obj1][obj2] = FastMath.pow(posteriors[obj1][obj2]*intensPrior,2.0/(nc+1.0));
+                        //posteriors[obj1][obj2] = FastMath.pow(posteriors[obj1][obj2]*FastMath.pow(intensPrior,intensityImportance),2.0/(intensityImportance*nc+1.0));
+                        posteriors[obj1][obj2] = FastMath.pow(posteriors[obj1][obj2]*FastMath.pow(intensPrior,intensityImportance*nc),2.0/(intensityImportance*nc+1.0));
                     }
                 }
             }
@@ -2222,7 +2274,7 @@ public class ConditionalShapeSegmentation {
         for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
             for (int tc=0;tc<ntc;tc++) {
                 // smooth histograms to avoid sharp edge effects
-                double var = 1.0*1.0;
+                double var = histogramSpread*histogramSpread;
                 double[] tmphist = new double[nbins];
                 for (int bin1=0;bin1<nbins;bin1++) {
                     for (int bin2=0;bin2<nbins;bin2++) {
