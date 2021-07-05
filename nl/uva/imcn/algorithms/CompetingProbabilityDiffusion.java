@@ -80,6 +80,14 @@ public class CompetingProbabilityDiffusion {
 	    for (int p=0;p<np;p++) for (int xyz=0;xyz<nxyz;xyz++) {
 	        posterior[p][xyz] = proba[p][xyz];
 	    }
+	    // save the original proba for later
+	    float[][] priors = new float[np][nmask];
+	    for (int msk=0;msk<nmask;msk++) {
+		    int xyz = idmap[msk];
+		    for (int p=0;p<np;p++) {
+		        priors[p][msk] = proba[p][xyz];
+		    }
+		}
 	    // replace proba by linking function to save space
 	    for (int xyz=0;xyz<nxyz;xyz++) {
 	        if (mask[xyz]) {
@@ -91,6 +99,12 @@ public class CompetingProbabilityDiffusion {
                     proba[p][xyz] = (float)FastMath.sqrt((1.0f - maxp)*Numerics.max(prior[xyz],posterior[p][xyz]));
                 }
             }
+	    }
+	    // for checking
+	    if (maxiter==0) {
+            for (int p=0;p<np;p++) for (int xyz=0;xyz<nxyz;xyz++) {
+                posterior[p][xyz] = proba[p][xyz];
+            }	        
 	    }
 	    // pre-compute neighborhood ids
 	    int[][][] ngbid = new int[np][nmask][ngb];
@@ -123,32 +137,51 @@ public class CompetingProbabilityDiffusion {
         }
 
         // diffusion step
+        float[][] prev = new float[np][nmask];
 	    for (int t=0;t<maxiter;t++) {
+	        System.out.print("Iteration "+t);
 	        float diff=0.0f;
 	    
 	        for (int msk=0;msk<nmask;msk++) {
                 int xyz = idmap[msk];
                 for (int p=0;p<np;p++) {
-                    float prev = posterior[p][xyz];
-	                for (int b=0;b<ngb;b++) if (ngbid[p][msk][b]>-1) {
-	                    int idx = ngbid[p][msk][b];
-	                    float maxp = 0.0f;
-                        for (int q=0;q<np;q++) maxp = Numerics.max(maxp, posterior[q][idx]);
-                        
-                        posterior[p][xyz] += ratio*proba[p][idx]*(posterior[p][idx]-maxp);
-                    }
-                    posterior[p][xyz] = Numerics.bounded(posterior[p][xyz],0.0f,1.0f);
-                    
-                    if (Numerics.abs(posterior[p][xyz]-prev)>diff)
-                        diff = Numerics.abs(posterior[p][xyz]-prev);
+                    prev[p][msk] = posterior[p][xyz];
                 }
             }
+	        for (int msk=0;msk<nmask;msk++) {
+                int xyz = idmap[msk];
+                
+                for (int p=0;p<np;p++) {
+	                float num = 0.0f;
+	                float den = 0.0f;
+                    for (int b=0;b<ngb;b++) if (ngbid[p][msk][b]>-1) {
+	                    int idx = ngbid[p][msk][b];
+	                    float maxp = 0.0f;
+                        for (int q=0;q<np;q++) if (q!=p) maxp = Numerics.max(maxp, prev[q][msk]);
+                        
+                        num += proba[p][idx]*(prev[p][msk]-maxp);
+	                    den += proba[p][idx];
+	                }
+	                // should be globally stable, but maybe not spreading far enough?
+	                //posterior[p][xyz] = priors[p][msk] + ratio*num/den;
+	                // tends to saturate but propagates nicely
+	                posterior[p][xyz] += ratio*num/den;
+	                
+	                posterior[p][xyz] = Numerics.bounded(posterior[p][xyz],0.0f,1.0f);
+                        
+                    if (Numerics.abs(posterior[p][xyz]-prev[p][msk])>diff)
+                        diff = Numerics.abs(posterior[p][xyz]-prev[p][msk]);
+                }
+            }
+            System.out.println(": "+diff);
             
             if (diff<maxdiff) t=maxiter;
         }
 		// compute the clustering
 		clustering = new int[nxyz];
 		for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
+		    // combine with probability of existence?
+		    for (int p=0;p<np;p++) posterior[p][xyz] = (float)FastMath.sqrt(posterior[p][xyz]*proba[p][xyz]);
 		    int nbest = -1;
 		    float best = 0.0f;
 		    for (int p=0;p<np;p++) if (posterior[p][xyz]>best) {
@@ -156,6 +189,7 @@ public class CompetingProbabilityDiffusion {
 		        nbest = p;
 		    }
 		    clustering[xyz] = nbest+1;
+		    //for (int p=0;p<np;p++) posterior[p][xyz] *= proba[p][xyz];
 		}
 		return;
 	}
