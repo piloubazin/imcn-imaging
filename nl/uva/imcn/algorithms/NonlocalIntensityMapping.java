@@ -79,7 +79,7 @@ public class NonlocalIntensityMapping {
                     float ndist = 0.0f;
                     for (int dx=-patch;dx<=patch;dx++) for (int dy=-patch;dy<=patch;dy++) {
                         if (x+dx>=0 && x+dx<nx && y+dy>=0 && y+dy<ny && image[x+dx+nx*(y+dy)]!=0
-                            && xs+dx>=0 && xs+dx<nx && ys+dy>=0 && ys<ny && reference[r][xs+dx+nx*(ys+dy)]!=0) {
+                            && xs+dx>=0 && xs+dx<nx && ys+dy>=0 && ys+dy<ny && reference[r][xs+dx+nx*(ys+dy)]!=0) {
                             distance[w] += Numerics.square(image[x+dx+nx*(y+dy)]-reference[r][xs+dx+nx*(ys+dy)]);
                             ndist++;
                         }

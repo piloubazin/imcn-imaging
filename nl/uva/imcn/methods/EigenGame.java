@@ -93,6 +93,9 @@ public class EigenGame {
     /** accessor for computed data */ 
     public final double[][] getEigenvectors() { return vect; }
 	
+    /** accessor for computed data */ 
+    public final double[] getEigenvectorAt(int n) { return vect[n]; }
+	
     /** 
 	 *  compute the eigenvectors for a square matrix with the basic sequential eigengame algorithm
 	 */
