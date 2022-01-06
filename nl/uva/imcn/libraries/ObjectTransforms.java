@@ -1131,7 +1131,7 @@ public class ObjectTransforms {
     }
     
     /** ordering of the neighborhood is important here */
-    private static final int fastMarchingNeighborIndex(byte d, int id, int nx, int ny, int nz) {
+    public static final int fastMarchingNeighborIndex(byte d, int id, int nx, int ny, int nz) {
 		switch (d) {
 			case 0		: 	return id+1; 		
 			case 1		:	return id-1;
@@ -1244,7 +1244,7 @@ public class ObjectTransforms {
      * (!assumes a 6D array with opposite coordinates stacked one after the other)
      * 
      */
-    private static final float minimumMarchingDistance(float[] val, boolean[] flag, float[] h2) {
+    public static final float minimumMarchingDistance(float[] val, boolean[] flag, float[] h2) {
 
         float s, s2; // s = a + b +c; s2 = a*a + b*b +c*c
         float tmp;
