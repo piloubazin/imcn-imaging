@@ -465,6 +465,9 @@ public class LinearFiberMapping {
                         ani[lx[n]+nx*ly[n]] = aniL;
                         propag[lx[n]+nx*ly[n]] = meanp;
                     }
+                } else {
+                    // remove single point detections (artefacts)
+                    propag[lx[0]+nx*ly[0]] = 0.0f;
                 }
             }
 		}

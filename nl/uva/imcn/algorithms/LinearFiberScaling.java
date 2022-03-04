@@ -56,6 +56,15 @@ public class LinearFiberScaling {
 	public void execute(){
 		BasicInfo.displayMessage("linear fiber scaling:\n");
 		
+		// clean up length zero patterns
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+		    int idn = x+nx*y+nx*ny*z;
+		    if (lengthImage[idn]==0) {
+		        probaImage[idn] = 0.0f;
+		        thetaImage[idn] = 0.0f;
+		    }
+		}
+		
 		// import the inputImage data into 1D arrays: already done
 		int mx = Numerics.ceil((float)nx/scaling);
 		int my = Numerics.ceil((float)ny/scaling);
@@ -79,23 +88,25 @@ public class LinearFiberScaling {
 		        }
 		        // then group the corresponding voxels
 		        if (maxproba>0) {
+		            //int nb=0;
                     for (int dx=0;dx<scaling;dx++) for (int dy=0;dy<scaling;dy++) {
                         if (x*scaling+dx<nx && y*scaling+dy<ny) {
                             int idn = x*scaling+dx + nx*(y*scaling+dy) + nx*ny*z;
                             if (probaImage[idn]>=maxproba-detectionThreshold) {
-                                probasc[idm+mx*my*nz*k] += probaImage[idn];
-                                thetasc[idm+mx*my*nz*k] += probaImage[idn]*thetaImage[idn];
-                                lengthsc[idm+mx*my*nz*k] += probaImage[idn]*lengthImage[idn];
+                                probasc[idm+mx*my*nz*k] = maxproba;
+                                thetasc[idm+mx*my*nz*k] = thetaImage[idn];
+                                lengthsc[idm+mx*my*nz*k] = lengthImage[idn];
+                                //nb++;
                                 // reset probability once it has been used
+                                // not OK: used in different regions??
                                 probaImage[idn] = 0.0f;
                             }
                         }
                     }
-                    if (probasc[idm+mx*my*nz*k]>0) {
-                        thetasc[idm+mx*my*nz*k] /= probasc[idm+mx*my*nz*k];
-                        lengthsc[idm+mx*my*nz*k] /= probasc[idm+mx*my*nz*k];
-                        probasc[idm+mx*my*nz*k] /= scaling*scaling;
-                    }
+                    //if (nb>0) {
+                    //    thetasc[idm+mx*my*nz*k] /= nb;
+                    //    lengthsc[idm+mx*my*nz*k] /= nb;
+                    //}
                 }
             }
         }
