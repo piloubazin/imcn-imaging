@@ -29,6 +29,8 @@ public class SpectralShapeEmbedding {
 	private float spaceDev = 10.0f;
 	private boolean sparse=true;
 	private int msize = 800;
+	private static final String[] refAxTypes = {"none","X","Y","Z"};
+	private String refAxis = "none";
 	
 	private float[] coordImage;
 	
@@ -61,6 +63,8 @@ public class SpectralShapeEmbedding {
 	public final void setContrastImageAt(int num, float[] val) { contrastImages[num] = val; }
 	public final void setContrastDev(float[] val) { contrastDev = val; }
 	public final void setMatrixSize(int val) { msize = val; }
+	
+	public final void setReferenceAxis(String val) { refAxis = val; }
 	
 	public final void setDimensions(int x, int y, int z) { nx=x; ny=y; nz=z; nxyz=nx*ny*nz; }
 	public final void setDimensions(int[] dim) { nx=dim[0]; ny=dim[1]; nz=dim[2]; nxyz=nx*ny*nz; }
@@ -292,6 +296,37 @@ public class SpectralShapeEmbedding {
                 }
                 if (npt>0) v++;
             }
+            // flip eigenvectors to common orientation if desired
+            if (refAxis!="none") {
+                float[] sign = new float[4];
+                for (int x=0;x<nx;x+=sub) for (int y=0;y<ny;y+=sub) for (int z=0;z<nz;z+=sub) {
+                    int xyz = x+nx*y+nx*ny*z;
+                    if (labelImage[xyz]==lb) {
+                        if (refAxis=="X") {
+                            sign[1] += x*coordImage[xyz+Y*nxyz];
+                            sign[2] += x*coordImage[xyz+Z*nxyz];
+                            sign[3] += x*coordImage[xyz+T*nxyz];
+                        } else if (refAxis=="Y") {
+                            sign[1] += y*coordImage[xyz+Y*nxyz];
+                            sign[2] += y*coordImage[xyz+Z*nxyz];
+                            sign[3] += y*coordImage[xyz+T*nxyz];
+                        } else if (refAxis=="Z") {
+                            sign[1] += z*coordImage[xyz+Y*nxyz];
+                            sign[2] += z*coordImage[xyz+Z*nxyz];
+                            sign[3] += z*coordImage[xyz+T*nxyz];
+                        }
+                    }
+                }
+                for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+                    int xyz = x+nx*y+nx*ny*z;
+                    if (labelImage[xyz]==lb) {
+                        if (sign[1]<0) coordImage[xyz+Y*nxyz] = -coordImage[xyz+Y*nxyz];
+                        if (sign[2]<0) coordImage[xyz+Z*nxyz] = -coordImage[xyz+Z*nxyz];
+                        if (sign[3]<0) coordImage[xyz+T*nxyz] = -coordImage[xyz+T*nxyz];
+                    }
+                }
+            }
+            
 		}
 		return;
 	}
