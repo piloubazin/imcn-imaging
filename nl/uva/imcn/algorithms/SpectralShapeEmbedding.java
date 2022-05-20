@@ -59,9 +59,10 @@ public class SpectralShapeEmbedding {
 	public final void setContrastNumber(int val) { 
 	    nc = val;
 	    contrastImages = new float[nc][];
+	    contrastDev = new float[nc];
 	}
 	public final void setContrastImageAt(int num, float[] val) { contrastImages[num] = val; }
-	public final void setContrastDev(float[] val) { contrastDev = val; }
+	public final void setContrastDevAt(int num, float val) { contrastDev[num] = val; }
 	public final void setMatrixSize(int val) { msize = val; }
 	
 	public final void setReferenceAxis(String val) { refAxis = val; }
