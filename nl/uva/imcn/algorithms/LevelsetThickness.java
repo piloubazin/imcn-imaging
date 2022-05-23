@@ -45,7 +45,6 @@ public class LevelsetThickness {
 	// computation variables
 	private boolean[][][] obj = new boolean[3][3][3];
 	private CriticalPointLUT lut;
-	private BinaryHeap3D	heap;
 	private String	lutdir = null;
 	
 	// for debug and display

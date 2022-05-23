@@ -35,6 +35,8 @@ public class LinearFiberMapping {
 	private float detectionThreshold = 0.01f;
 	private float maxLineDist = 1.0f;
 	private boolean extend = true;
+	private float stoppingRatio = 0.1f;
+	private float extendRatio = 0.5f;
 	
 	private float[] probaImage;
 	private int[] lineImage;
@@ -86,6 +88,8 @@ public class LinearFiberMapping {
 	public final void setDetectionThreshold(float val) { detectionThreshold = val; }
 	public final void setMaxLineDistance(float val) { maxLineDist = val; }
 	public final void setExtendResult(boolean val) { extend = val; }
+	public final void setInclusionRatio(float val) { stoppingRatio = val; }
+	public final void setExtendRatio(float val) { extendRatio = val; }
 		
 	// set generic inputs	
 	public final void setDimensions(int x, int y, int z) { nx=x; ny=y; nz=z; nxyz=nx*ny*nz; }
@@ -259,7 +263,7 @@ public class LinearFiberMapping {
                 for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) {
                     int ngb = xM+dx + nx*(yM+dy);
                     if (mask[ngb] && !used[ngb]) {
-                        if (propag[ngb]>detectionThreshold) {
+                        if (propag[ngb]>detectionThreshold && propag[ngb]>stoppingRatio*maxpropag) {
                             heap.addValue(propag[ngb], xM+dx, yM+dy);
                         }
                     }
@@ -323,7 +327,7 @@ public class LinearFiberMapping {
                         for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) {
                             int ngb = lx[nl]+dx + nx*(ly[nl]+dy);
                             if (mask[ngb] && !used[ngb]) {
-                                if (propag[ngb]>detectionThreshold) {
+                                if (propag[ngb]>detectionThreshold && propag[ngb]>stoppingRatio*maxpropag) {
                                     heap.addValue(propag[ngb], lx[nl]+dx, ly[nl]+dy);
                                 }
                             }
@@ -487,14 +491,24 @@ public class LinearFiberMapping {
                 int xyz = x + nx*y;
                 for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) {
                     int ngb = x+dx + nx*(y+dy);
-                    if (mask[ngb] && lines[ngb]==0) {
-                        lines[ngb] = lines[xyz];
-                        theta[ngb] = theta[xyz];
-                        length[ngb] = length[xyz];
-                        ani[ngb] = ani[xyz];
-                        propag[ngb] = score-1.0f;
-                        
-                        ordering.addValue(score-1.0f, x+dx,y+dy);
+                    if (extendRatio<0) {
+                        if (mask[ngb] && lines[ngb]==0) {
+                            lines[ngb] = lines[xyz];
+                            theta[ngb] = theta[xyz];
+                            length[ngb] = length[xyz];
+                            ani[ngb] = ani[xyz];
+                            propag[ngb] = score-1.0f;
+                            ordering.addValue(propag[ngb], x+dx,y+dy);
+                        }
+                    } else {
+                        if (mask[ngb] && propag[ngb]<extendRatio*score) {
+                            lines[ngb] = lines[xyz];
+                            theta[ngb] = theta[xyz];
+                            length[ngb] = length[xyz];
+                            ani[ngb] = ani[xyz];
+                            propag[ngb] = extendRatio*score;
+                            ordering.addValue(propag[ngb], x+dx,y+dy);
+                        }
                     }
                 }	
             }

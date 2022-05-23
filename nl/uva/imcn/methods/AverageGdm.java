@@ -22,11 +22,6 @@ import org.apache.commons.math3.util.FastMath;
  
 public class AverageGdm {
 	
-	// object types
-	private	static	final	byte	EMPTY = -1;
-	private	static	final	byte	OBJ = 1;
-	private	static	final	byte	BG = 0;
-	
 	// fast marching flags
 	private final static byte X = 0;
     private final static byte Y = 1;
@@ -59,7 +54,7 @@ public class AverageGdm {
 	private 	int 		ncx,ncy,ncz;   		// images dimensions
 	private 	int 		x0,y0,z0;   		// images dimensions
 	private 	int 		xN,yN,zN;   		// images dimensions
-	private		BinaryHeap4D	heap;				// the heap used in fast marching
+	private		BinaryHeap3D	heap;				// the heap used in fast marching
 	private		CriticalPointLUT	lut;				// the LUT for critical points
 	private		boolean				checkComposed;		// check if the objects are well-composed too (different LUTs)
 	private		boolean				checkTopology;		// check if the objects are well-composed too (different LUTs)
@@ -107,7 +102,7 @@ public class AverageGdm {
 			minlevelset = new float[nx][ny][nz];
 			mask = new boolean[nx][ny][nz];
 			// initalize the heap too so we don't have to do it multiple times
-			heap = new BinaryHeap4D(ncx*ncy+ncy*ncz+ncz*ncx, BinaryHeap4D.MINTREE);
+			heap = new BinaryHeap3D(ncx*ncy+ncy*ncz+ncz*ncx, BinaryHeap3D.MINTREE);
 			// topology luts
 			checkTopology=true;
 			checkComposed=false;
@@ -289,7 +284,7 @@ public class AverageGdm {
 				for (int k = 0; k<6 ; k++) {
 					if (avglevelset[x+xoff[k]][y+yoff[k]][z+zoff[k]]>=0) {
 						// add to the heap (multiple instances are OK)
-						heap.addValue(avglevelset[x+xoff[k]][y+yoff[k]][z+zoff[k]],x+xoff[k],y+yoff[k],z+zoff[k],1);
+						heap.addValue(avglevelset[x+xoff[k]][y+yoff[k]][z+zoff[k]],x+xoff[k],y+yoff[k],z+zoff[k]);
 					}
 				}
 			} else {
@@ -310,7 +305,7 @@ public class AverageGdm {
 				// add neighbors
 				for (int k = 0; k<6; k++) {
 					if (label[x+xoff[k]][y+yoff[k]][z+zoff[k]]==false) {
-						heap.addValue(avglevelset[x+xoff[k]][y+yoff[k]][z+zoff[k]],x+xoff[k],y+yoff[k],z+zoff[k],1);
+						heap.addValue(avglevelset[x+xoff[k]][y+yoff[k]][z+zoff[k]],x+xoff[k],y+yoff[k],z+zoff[k]);
 					}
 				}
 			}
@@ -358,7 +353,7 @@ public class AverageGdm {
 					int xk = x+xoff[k]; int yk = y+yoff[k]; int zk = z+zoff[k];
 					if (minlevelset[xk][yk][zk]<=dist0 && mask[xk][yk][zk]) {
 						// add to the heap with previous value
-						heap.addValue(avglevelset[xk][yk][zk],xk, yk, zk, OBJ);
+						heap.addValue(avglevelset[xk][yk][zk],xk, yk, zk);
 					}
 				}
             }
@@ -403,7 +398,7 @@ public class AverageGdm {
 					// must be in outside the object or its processed neighborhood
 					if (!processed[xk][yk][zk]) {
 						// add to the heap
-						heap.addValue(avglevelset[xk][yk][zk],xk,yk,zk,OBJ);
+						heap.addValue(avglevelset[xk][yk][zk],xk,yk,zk);
 					}
 				}
 			}
