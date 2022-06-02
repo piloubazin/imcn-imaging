@@ -31,6 +31,9 @@ public class SpectralShapeEmbedding {
 	private int msize = 800;
 	private static final String[] refAxTypes = {"none","X","Y","Z"};
 	private String refAxis = "none";
+	private boolean eigenGame = true;
+	private double alpha = 1e-2;
+	private double error = 1e-2;
 	
 	private float[] coordImage;
 	
@@ -66,6 +69,8 @@ public class SpectralShapeEmbedding {
 	public final void setMatrixSize(int val) { msize = val; }
 	
 	public final void setReferenceAxis(String val) { refAxis = val; }
+	
+	public final void setEigenGame(boolean val, double a, double e) { eigenGame=val; alpha=a; error=e; }
 	
 	public final void setDimensions(int x, int y, int z) { nx=x; ny=y; nz=z; nxyz=nx*ny*nz; }
 	public final void setDimensions(int[] dim) { nx=dim[0]; ny=dim[1]; nz=dim[2]; nxyz=nx*ny*nz; }
@@ -297,27 +302,150 @@ public class SpectralShapeEmbedding {
                 }
                 if (npt>0) v++;
             }
-            // flip eigenvectors to common orientation if desired
-            if (refAxis!="none") {
-                float[] sign = new float[4];
-                for (int x=0;x<nx;x+=sub) for (int y=0;y<ny;y+=sub) for (int z=0;z<nz;z+=sub) {
+            // refine the result with eigenGame?
+            if (eigenGame && sub>1) {
+                vol=0;
+                for (int xyz=0;xyz<nxyz;xyz++) if (labelImage[xyz]==lb) vol++;
+                System.out.println("Eigen game base volume: "+vol);
+                
+                // build coordinate and contrast arrays
+                coord = new float[3][vol];
+                contrasts = null;
+                if (nc>0) contrasts = new float[nc][vol];
+                v=0;
+                for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
                     int xyz = x+nx*y+nx*ny*z;
                     if (labelImage[xyz]==lb) {
-                        if (refAxis=="X") {
-                            sign[1] += x*coordImage[xyz+Y*nxyz];
-                            sign[2] += x*coordImage[xyz+Z*nxyz];
-                            sign[3] += x*coordImage[xyz+T*nxyz];
-                        } else if (refAxis=="Y") {
-                            sign[1] += y*coordImage[xyz+Y*nxyz];
-                            sign[2] += y*coordImage[xyz+Z*nxyz];
-                            sign[3] += y*coordImage[xyz+T*nxyz];
-                        } else if (refAxis=="Z") {
-                            sign[1] += z*coordImage[xyz+Y*nxyz];
-                            sign[2] += z*coordImage[xyz+Z*nxyz];
-                            sign[3] += z*coordImage[xyz+T*nxyz];
+                        coord[X][v] = x;
+                        coord[Y][v] = y;
+                        coord[Z][v] = z;
+                        if (nc>0) {
+                            for (int c=0;c<nc;c++) {
+                                contrasts[c][v] = contrastImages[c][xyz];
+                            }
+                        }
+                        v++;
+                    }
+                }       
+                System.out.println("..contrasts");
+                        
+                // build correlation matrix
+                int nmtx = 0;
+                for (int v1=0;v1<vol;v1++) for (int v2=v1+1;v2<vol;v2++) {
+                    double dist = (coord[X][v1]-coord[X][v2])*(coord[X][v1]-coord[X][v2])
+                                 +(coord[Y][v1]-coord[Y][v2])*(coord[Y][v1]-coord[Y][v2])
+                                 +(coord[Z][v1]-coord[Z][v2])*(coord[Z][v1]-coord[Z][v2]);
+                    // when computing a sparse version, only keep strict 6-C neighbors             
+                    if (sparse && dist<=1.0) {
+                        nmtx++;
+                    }
+                }
+                System.out.println("non-zero components: "+nmtx);
+                
+                double[] mtxval = new double[nmtx];
+                int[] mtxid1 = new int[nmtx];
+                int[] mtxid2 = new int[nmtx];
+                int[][] mtxinv = new int[6][vol];
+                
+                int id=0;
+                for (int v1=0;v1<vol;v1++) for (int v2=v1+1;v2<vol;v2++) {
+                    double dist = (coord[X][v1]-coord[X][v2])*(coord[X][v1]-coord[X][v2])
+                                 +(coord[Y][v1]-coord[Y][v2])*(coord[Y][v1]-coord[Y][v2])
+                                 +(coord[Z][v1]-coord[Z][v2])*(coord[Z][v1]-coord[Z][v2]);
+                    // when computing a sparse version, only keep strict 6-C neighbors             
+                    if (sparse && dist<=1.0) {
+                        double coeff = 1.0/FastMath.sqrt(dist);
+                        if (nc>0) {
+                            double diff = 0.0;
+                            for (int c=0;c<nc;c++) {
+                                diff += (contrasts[c][v1]-contrasts[c][v2])
+                                       *(contrasts[c][v1]-contrasts[c][v2])/contrastDev[c];
+                            }
+                            coeff *= FastMath.exp(-0.5*diff);
+                        }
+                        mtxval[id] = coeff;
+                        mtxid1[id] = v1;
+                        mtxid2[id] = v2; 
+                        for (int c=0;c<6;c++) if (mtxinv[c][v1]==0) {
+                            mtxinv[c][v1] = id+1;
+                            c=6;
+                        }
+                        for (int c=0;c<6;c++) if (mtxinv[c][v2]==0) {
+                            mtxinv[c][v2] = id+1;
+                            c=6;
+                        }
+                        id++;
+                    }
+                }
+                coord = null;
+                contrasts = null;
+                
+                System.out.println("..correlations");
+                
+                // get initial vector guesses from subsampled data
+                double[][] init = new double[4][vol];
+                v=0;
+                for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+                    int xyz = x+nx*y+nx*ny*z;
+                    if (labelImage[xyz]==lb) {
+                        init[0][v] = coordImage[xyz+X*nxyz];
+                        init[1][v] = coordImage[xyz+Y*nxyz];
+                        init[2][v] = coordImage[xyz+Z*nxyz];
+                        init[3][v] = coordImage[xyz+T*nxyz];
+                        v++;
+                    }
+                }
+                
+                runSparseLaplacianEigenGame(mtxval, mtxid1, mtxid2, mtxinv, nmtx, vol, 4, init);
+                              
+                v=0;
+                for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+                    int xyz = x+nx*y+nx*ny*z;
+                    if (labelImage[xyz]==lb) {
+                        coordImage[xyz+Y*nxyz] = (float)init[1][v];
+                        coordImage[xyz+Z*nxyz] = (float)init[2][v];
+                        coordImage[xyz+T*nxyz] = (float)init[3][v];
+                        v++;
+                    }
+                }
+                
+            }
+            
+            // flip eigenvectors to common orientation if desired
+            if (!refAxis.equals("none")) {
+                System.out.println("Orient to axis: "+refAxis);
+                float center = 0.0f;
+                int npt = 0;
+                float[] sign = new float[4];
+                for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+                    int xyz = x+nx*y+nx*ny*z;
+                    if (labelImage[xyz]==lb) {
+                        if (refAxis.equals("X")) center += x;
+                        else if (refAxis.equals("Y")) center += y;
+                        else if (refAxis.equals("Z")) center += z;
+                        npt++;
+                    }
+                }
+                if (npt>0) center /= npt;
+                for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+                    int xyz = x+nx*y+nx*ny*z;
+                    if (labelImage[xyz]==lb) {
+                        if (refAxis.equals("X")) {
+                            sign[1] += (x-center)*coordImage[xyz+Y*nxyz];
+                            sign[2] += (x-center)*coordImage[xyz+Z*nxyz];
+                            sign[3] += (x-center)*coordImage[xyz+T*nxyz];
+                        } else if (refAxis.equals("Y")) {
+                            sign[1] += (y-center)*coordImage[xyz+Y*nxyz];
+                            sign[2] += (y-center)*coordImage[xyz+Z*nxyz];
+                            sign[3] += (y-center)*coordImage[xyz+T*nxyz];
+                        } else if (refAxis.equals("Z")) {
+                            sign[1] += (z-center)*coordImage[xyz+Y*nxyz];
+                            sign[2] += (z-center)*coordImage[xyz+Z*nxyz];
+                            sign[3] += (z-center)*coordImage[xyz+T*nxyz];
                         }
                     }
                 }
+                System.out.println("Label "+n+" switching: "+sign[1]+", "+sign[2]+", "+sign[3]);
                 for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
                     int xyz = x+nx*y+nx*ny*z;
                     if (labelImage[xyz]==lb) {
@@ -335,4 +463,143 @@ public class SpectralShapeEmbedding {
     private final void jointShapeEmbedding() { 
 	    
     }
+    
+    private final void runSparseLaplacianEigenGame(double[] mtval, int[] mtid1, int[] mtid2, int[][] mtinv, int nn0, int nm, int nv, double[][] init) {
+        //double 		error = 1e-2;	// error tolerance
+        //double      alpha = 1e-3;    // step size
+        int iter;
+        double[][] Mv = new double[nv][nm];
+        double[] vMv = new double[nv];
+        
+        double[][] vect = init;
+        
+        // here assume the matrix is the upper diagonal of correlation matrix
+        
+        // build degree first
+        double[] deg = new double[nm];
+        // M_ii = 0
+        for (int n=0;n<nm;n++) {
+            deg[n] = 0.0;
+        }
+        // M_ij and M_ji
+        for (int n=0;n<nn0;n++) {
+            deg[mtid1[n]] += mtval[n];
+            deg[mtid2[n]] += mtval[n];
+        }
+        
+        for (int vi=0;vi<nv;vi++) {
+            System.out.println("..eigenvector "+(vi+1));
+        
+            // compute new vectors based on 
+            for (int n=0;n<nm;n++) {
+                /* generic formula
+                Mv[vi][n] = 0.0;
+                for (int m=0;m<nm;m++)
+                    Mv[vi][n] += matrix[n][m]*vect[vi][m];
+                    */
+                // diagonal term is 2-1, as lambda_0<=2 (graph Laplacian property)
+                Mv[vi][n] = vect[vi][n];
+                // off-diagonals
+                for (int c=0;c<6;c++) if (mtinv[c][n]>0) {
+                    if (mtid1[mtinv[c][n]-1]==n) {
+                        // v1<v2
+                        Mv[vi][n] += mtval[mtinv[c][n]-1]/deg[n]*vect[vi][mtid2[mtinv[c][n]-1]];
+                    } else if (mtid2[mtinv[c][n]-1]==n) {
+                        // v1<v2
+                        Mv[vi][n] += mtval[mtinv[c][n]-1]/deg[n]*vect[vi][mtid1[mtinv[c][n]-1]];
+                    }  
+                }
+                /*
+                for (int m=0;m<nn0;m++) {
+                    if (mtid1[m]==n) {
+                        // v1<v2
+                        Mv[vi][n] += mtval[m]/deg[n]*vect[vi][mtid2[m]];
+                    } else if (mtid2[m]==n) {
+                        // v1<v2
+                        Mv[vi][n] += mtval[m]/deg[n]*vect[vi][mtid1[m]];
+                    }
+                }*/
+            }
+            
+            // calculate required number of iterations
+            double norm = 0.0;
+            for (int n=0;n<nm;n++) norm += Mv[vi][n]*Mv[vi][n];
+            
+            double Ti = 5.0/4.0/Numerics.min(norm/4.0, error*error);
+            System.out.println("-> "+Ti+" iterations");
+            
+            // pre-compute previous quantities?
+            
+            // main loop
+            double[] grad = new double[nm];
+            for (int t=0;t<Ti;t++) {
+                //System.out.print(".");
+                // gradient computation
+                for (int n=0;n<nm;n++) {
+                    grad[n] = 2.0*Mv[vi][n];
+                    for (int vj=0;vj<vi;vj++) {
+                        double prod = 0.0;
+                        for (int m=0;m<nm;m++) prod += Mv[vj][m]*vect[vi][m];
+                        grad[n] -= 2.0*prod/vMv[vj]*Mv[vj][n];
+                    }
+                }
+                // Riemannian projection
+                double gradR = 0.0;
+                for (int n=0;n<nm;n++)
+                    gradR += grad[n]*vect[vi][n];
+                
+                // update
+                norm = 0.0;
+                for (int n=0;n<nm;n++) {
+                    vect[vi][n] += alpha*(grad[n] - gradR*vect[vi][n]);
+                    norm += vect[vi][n]*vect[vi][n];
+                }
+                norm = FastMath.sqrt(norm);
+                
+                // renormalize 
+                for (int n=0;n<nm;n++) {
+                    vect[vi][n] /= norm;
+                }
+                
+                // recompute Mvi
+                for (int n=0;n<nm;n++) {
+                    /* replace by compressed matrix
+                    Mv[vi][n] = 0.0;
+                    for (int m=0;m<nm;m++)
+                        Mv[vi][n] += matrix[n][m]*vect[vi][m];
+                        */
+                    // diagonal term is 2-1
+                    Mv[vi][n] = vect[vi][n];
+                    // off-diagonals
+                    for (int c=0;c<6;c++) if (mtinv[c][n]>0) {
+                        if (mtid1[mtinv[c][n]-1]==n) {
+                            // v1<v2
+                            Mv[vi][n] += mtval[mtinv[c][n]-1]/deg[n]*vect[vi][mtid2[mtinv[c][n]-1]];
+                        } else if (mtid2[mtinv[c][n]-1]==n) {
+                            // v1<v2
+                            Mv[vi][n] += mtval[mtinv[c][n]-1]/deg[n]*vect[vi][mtid1[mtinv[c][n]-1]];
+                        }  
+                    }
+                    /*
+                    // off-diagonals
+                    for (int m=0;m<nn0;m++) {
+                        if (mtid1[m]==n) {
+                            // v1<v2
+                            Mv[vi][n] += mtval[m]/deg[mtid1[m]]*vect[vi][mtid2[m]];
+                        } else if (mtid2[m]==n) {
+                            // v1<v2
+                            Mv[vi][n] += mtval[m]/deg[mtid2[m]]*vect[vi][mtid1[m]];
+                        }
+                    }*/
+                }
+            }
+            
+            // post-process: compute summary quantities for next step
+            vMv[vi] = 0.0;
+            for (int n=0;n<nm;n++) vMv[vi] += vect[vi][n]*Mv[vi][n];
+    
+            // done??
+        }
+    }
+
 }

@@ -81,6 +81,45 @@ public class EigenGame {
         }
 	}
 
+	/**
+	 *  constructor
+	 *	note: all images passed to the algorithm are just linked, not copied
+	 */
+	public EigenGame(double[][] matrix_, int nv_, double[][] init, boolean largest_) {
+		
+		matrix = matrix_;
+		
+		nm = matrix.length;
+		mm = matrix[0].length;
+		
+		nv = nv_;		
+		largest = largest_;
+
+		// init all the new arrays
+		try {
+			vect = new double[nv][nm];
+			Mv = new double[nv][nm];
+			vMv = new double[nv];
+			
+			random = new UnitSphereRandomVectorGenerator(nm);
+		} catch (OutOfMemoryError e){
+			finalize();
+			System.out.println(e.getMessage());
+			return;
+		}
+		
+		if (nm==mm && largest) {
+		    for (int vi=0;vi<nv;vi++) {
+                runSquareMatrixEigenGame(vi, init[vi]);
+            }
+        } else if (nm==mm && !largest) {
+            flipSquareMatrixEigenvalues();
+		    for (int vi=1;vi<nv;vi++) {
+                runSquareMatrixEigenGame(vi, init[vi]);
+            }
+        }
+	}
+
 	/** clean-up: destroy membership and centroid arrays */
 	public final void finalize() {
 		Mv = null;
@@ -100,10 +139,18 @@ public class EigenGame {
 	 *  compute the eigenvectors for a square matrix with the basic sequential eigengame algorithm
 	 */
     final public void runSquareMatrixEigenGame(int vi) {
+        
+        // random initialization
+        double[] init = random.nextVector();
+        
+        runSquareMatrixEigenGame(vi, init);
+    }
+        
+    final public void runSquareMatrixEigenGame(int vi, double[] init) {
         int iter;
         
         // random initialization
-        vect[vi] = random.nextVector();
+        vect[vi] = init;
         
         for (int n=0;n<nm;n++) {
             Mv[vi][n] = 0.0;
@@ -169,12 +216,10 @@ public class EigenGame {
 	 *  replace the matrix by lambda_1 I - M to get the lowest eigenvectors.
 	 */
     final public void flipSquareMatrixEigenvalues() {
-        // first eigenvalue
+        // first eigenvalue: use the trace instead
         double lambda = 0.0;
         for (int n=0;n<nm;n++) {
-            for (int m=0;m<nm;m++) {
-                lambda += vect[0][n]*matrix[n][m]*vect[0][m];
-            }
+            lambda += matrix[n][n];
         }
         
         // new matrix
