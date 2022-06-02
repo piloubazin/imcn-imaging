@@ -414,44 +414,67 @@ public class SpectralShapeEmbedding {
             // flip eigenvectors to common orientation if desired
             if (!refAxis.equals("none")) {
                 System.out.println("Orient to axis: "+refAxis);
-                float center = 0.0f;
+                float x0 = 0.0f;
+                float y0 = 0.0f;
+                float z0 = 0.0f;
                 int npt = 0;
-                float[] sign = new float[4];
+                float[][] sign = new float[4][4];
                 for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
                     int xyz = x+nx*y+nx*ny*z;
                     if (labelImage[xyz]==lb) {
-                        if (refAxis.equals("X")) center += x;
-                        else if (refAxis.equals("Y")) center += y;
-                        else if (refAxis.equals("Z")) center += z;
+                        x0 += x;
+                        y0 += y;
+                        z0 += z;
                         npt++;
                     }
                 }
-                if (npt>0) center /= npt;
+                if (npt>0) {
+                    x0 /= npt;
+                    y0 /= npt;
+                    z0 /= npt;
+                }
                 for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
                     int xyz = x+nx*y+nx*ny*z;
                     if (labelImage[xyz]==lb) {
-                        if (refAxis.equals("X")) {
-                            sign[1] += (x-center)*coordImage[xyz+Y*nxyz];
-                            sign[2] += (x-center)*coordImage[xyz+Z*nxyz];
-                            sign[3] += (x-center)*coordImage[xyz+T*nxyz];
-                        } else if (refAxis.equals("Y")) {
-                            sign[1] += (y-center)*coordImage[xyz+Y*nxyz];
-                            sign[2] += (y-center)*coordImage[xyz+Z*nxyz];
-                            sign[3] += (y-center)*coordImage[xyz+T*nxyz];
-                        } else if (refAxis.equals("Z")) {
-                            sign[1] += (z-center)*coordImage[xyz+Y*nxyz];
-                            sign[2] += (z-center)*coordImage[xyz+Z*nxyz];
-                            sign[3] += (z-center)*coordImage[xyz+T*nxyz];
-                        }
+                        sign[1][X] += (x-x0)*coordImage[xyz+Y*nxyz];
+                        sign[2][X] += (x-x0)*coordImage[xyz+Z*nxyz];
+                        sign[3][X] += (x-x0)*coordImage[xyz+T*nxyz];
+
+                        sign[1][Y] += (y-y0)*coordImage[xyz+Y*nxyz];
+                        sign[2][Y] += (y-y0)*coordImage[xyz+Z*nxyz];
+                        sign[3][Y] += (y-y0)*coordImage[xyz+T*nxyz];
+
+                        sign[1][Z] += (z-z0)*coordImage[xyz+Y*nxyz];
+                        sign[2][Z] += (z-z0)*coordImage[xyz+Z*nxyz];
+                        sign[3][Z] += (z-z0)*coordImage[xyz+T*nxyz];
                     }
                 }
-                System.out.println("Label "+n+" switching: "+sign[1]+", "+sign[2]+", "+sign[3]);
+                // use the strongest variation
+                for (int s=1;s<4;s++) {
+                    float center = x0-nx/2.0f;
+                    float max = sign[s][X];
+                    if (sign[s][Y]*sign[s][Y]>max*max) {
+                        max = sign[s][Y];
+                        center = y0-ny/2.0f;
+                    }
+                    if (sign[s][Z]*sign[s][Z]>max*max) {
+                        max = sign[s][Z];
+                        center = z0-nz/2.0f;
+                    }
+                    // dissimilar: negative sign
+                    if (center<0 && max>0) sign[s][T] = -max;
+                    if (center>0 && max<0) sign[s][T] = max;
+                    // similar: positive sign
+                    if (center<0 && max<0) sign[s][T] = -max;
+                    if (center>0 && max>0) sign[s][T] = max;
+                }
+                System.out.println("Label "+n+" switching: "+sign[1][T]+", "+sign[2][T]+", "+sign[3][T]);
                 for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
                     int xyz = x+nx*y+nx*ny*z;
                     if (labelImage[xyz]==lb) {
-                        if (sign[1]<0) coordImage[xyz+Y*nxyz] = -coordImage[xyz+Y*nxyz];
-                        if (sign[2]<0) coordImage[xyz+Z*nxyz] = -coordImage[xyz+Z*nxyz];
-                        if (sign[3]<0) coordImage[xyz+T*nxyz] = -coordImage[xyz+T*nxyz];
+                        if (sign[1][T]<0) coordImage[xyz+Y*nxyz] = -coordImage[xyz+Y*nxyz];
+                        if (sign[2][T]<0) coordImage[xyz+Z*nxyz] = -coordImage[xyz+Z*nxyz];
+                        if (sign[3][T]<0) coordImage[xyz+T*nxyz] = -coordImage[xyz+T*nxyz];
                     }
                 }
             }

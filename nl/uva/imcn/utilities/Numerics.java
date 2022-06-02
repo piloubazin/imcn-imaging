@@ -285,6 +285,12 @@ public class Numerics {
 		else return b;
 	}
 	
+	public static final float maxmag( float x1, float x2, float x3 ) {
+		float max = x1;
+		if (x2*x2>max*max) max = x2;
+		if (x3*x3>max*max) max = x3;
+		return max;
+	}
 	/** returns x in [a,b] linearly mapped to [0,1] */
 	public static final float mapped( float x, float a, float b) {
 		return (max(a,min(x,b))-a)/(b-a);
