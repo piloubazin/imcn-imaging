@@ -7,7 +7,7 @@ import nl.uva.imcn.libraries.ImageFilters;
 import nl.uva.imcn.libraries.ImageStatistics;
 import nl.uva.imcn.libraries.ObjectExtraction;
 import nl.uva.imcn.libraries.ObjectLabeling;
-import nl.uva.imcn.structures.BinaryHeapPair;
+import nl.uva.imcn.structures.BinaryHeap3D;
 
 import org.apache.commons.math3.util.FastMath;
 import org.apache.commons.math3.stat.descriptive.rank.Percentile;
@@ -212,7 +212,8 @@ public class LinearFiberMapping3D {
 		float pmax = ImageStatistics.robustMaximum(proba, 0.000001f, 6, nx, ny, nz);
 		if (pmax>0) for (int xyz=0;xyz<nxyz;xyz++) proba[xyz] = Numerics.min(proba[xyz]/pmax,1.0f);
 		
-		// generate a direction vector
+		/*
+		// generate a direction vector??
 		float[][] direction = new float[3][nxyz];
 		for (int xyz=0;xyz<nxyz;xyz++){
 			float[] vec = directionVector(maxdirection[xyz]);
@@ -220,6 +221,7 @@ public class LinearFiberMapping3D {
 			direction[Y][xyz] = vec[Y];
 			direction[Z][xyz] = vec[Z];
 		}
+		*/
 		
 		// 3. diffuse the data to neighboring structures
 		BasicInfo.displayMessage("...diffusion\n");
@@ -235,8 +237,8 @@ public class LinearFiberMapping3D {
 		float[] theta = new float[3*nxyz];
 		float[] length = new float[nxyz];
 		float[] ani = new float[nxyz];
-		BinaryHeapPair heap = new BinaryHeap3D(nx+ny, nx+ny, BinaryHeapPair.MAXTREE);
-		BinaryHeapPair ordering = new BinaryHeap3D(nx*ny, nx*ny, BinaryHeapPair.MAXTREE);
+		BinaryHeap3D heap = new BinaryHeap3D(nx+ny+nz, BinaryHeap3D.MAXTREE);
+		BinaryHeap3D ordering = new BinaryHeap3D(nx+ny+nz, BinaryHeap3D.MAXTREE);
 
         // simply order them by size instead?
 		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
@@ -246,7 +248,7 @@ public class LinearFiberMapping3D {
             }
         }
         
-        boolean[] used = new boolean[nx*ny];
+        boolean[] used = new boolean[nx*ny*nz];
         while (ordering.isNotEmpty()) {
             float maxpropag = ordering.getFirst();
             int xM = ordering.getFirstX();
@@ -255,7 +257,7 @@ public class LinearFiberMapping3D {
             
             ordering.removeFirst();
             
-            if (!used[xM+nx*yM]+nx*ny*zM) {
+            if (!used[xM+nx*yM+nx*ny*zM]) {
                 // region grow 2: toward lower values, fitting a line
                 // use probability to weight the line coeffs, to avoid end curls
                 heap.reset();
@@ -336,199 +338,124 @@ public class LinearFiberMapping3D {
                                 vy += dot*(ly[n]-cy);
                                 vz += dot*(lz[n]-cz);
                             }
-                            double norm = FastMath.qsrt(vx*vx+vy*vy+vz*vz);
+                            double norm = FastMath.sqrt(vx*vx+vy*vy+vz*vz);
                             lvx = vx/norm;
                             lvy = vy/norm;
                             lvz = vz/norm;
                         }
                     }
                     // compute distance
-                    TODO
-                    /*
-                    float vxx = score*(heap.getFirstX()-cx)*(heap.getFirstX()-cx);
-                    float vxy = score*(heap.getFirstX()-cx)*(heap.getFirstY()-cy);
-                    float vyy = score*(heap.getFirstY()-cy)*(heap.getFirstY()-cy);
-                    
+                    linedist = (heap.getFirstX()-cx)*(heap.getFirstX()-cx)*(1.0-lvx*lvx)
+                              +(heap.getFirstY()-cy)*(heap.getFirstY()-cx)*(1.0-lvy*lvy)
+                              +(heap.getFirstZ()-cz)*(heap.getFirstZ()-cx)*(1.0-lvz*lvz);
+                                 
                     for (int n=0;n<nl;n++) {
-                        vxx += lw[n]*(lx[n]-cx)*(lx[n]-cx);
-                        vxy += lw[n]*(lx[n]-cx)*(ly[n]-cy);
-                        vyy += lw[n]*(ly[n]-cy)*(ly[n]-cy);
+                        double dist = (lx[n]-cx)*(lx[n]-cx)*(1.0-lvx*lvx)
+                                     +(ly[n]-cy)*(ly[n]-cy)*(1.0-lvy*lvy)
+                                     +(lz[n]-cz)*(lz[n]-cz)*(1.0-lvz*lvz);
+                        if (dist>linedist) linedist = dist;
                     }
-                    vxx /= cw;
-                    vyy /= cw;
-                    vxy /= cw;
-                    
-                    if (vxy!=0) {
-                        double vx = vyy-vxx + FastMath.sqrt( (vyy-vxx)*(vyy-vxx) + 4.0*vxy*vxy);
-                        double vy = -2.0*vxy;
-                        double norm = vx*vx+vy*vy;
-                        
-                        linedist = Numerics.square(vx*(heap.getFirstX()-cx) + vy*(heap.getFirstY()-cy))/norm;
-                        for (int n=0;n<nl;n++) {
-                            double newdist = Numerics.square(vx*(lx[n]-cx) + vy*(ly[n]-cy))/norm;
-                            if (newdist>linedist) linedist = newdist;
-                        }
-                    }*/
                     if (linedist>maxLineDist2) {
                         // do not stop directly as other voxels with lower proba
                         // might still be fittingthe line
                         //stop = true;
                         // instead, skip so eventually the list is empty
                         // (mark it as used, so it doesn't get picked up again)
-                        used[heap.getFirstId1()+nx*heap.getFirstId2()] = true;
+                        used[heap.getFirstX()+nx*heap.getFirstY()+nx*ny*heap.getFirstZ()] = true;
                         heap.removeFirst();
                     } else {
-                        lx[nl] = heap.getFirstId1();
-                        ly[nl] = heap.getFirstId2();
+                        lx[nl] = heap.getFirstX();
+                        ly[nl] = heap.getFirstY();
+                        lz[nl] = heap.getFirstZ();
                         lw[nl] = heap.getFirst();
                         minscore = heap.getFirst();
-                        used[lx[nl]+nx*ly[nl]] = true;
+                        used[lx[nl]+nx*ly[nl]+nx*ny*lz[nl]] = true;
                         heap.removeFirst();
     
-                        for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) {
-                            int ngb = lx[nl]+dx + nx*(ly[nl]+dy);
+                        for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) for (int dz=-1;dz<=1;dz++) {
+                            int ngb = lx[nl]+dx + nx*(ly[nl]+dy) + nx*ny*(lz[nl]+dz);
                             if (mask[ngb] && !used[ngb]) {
                                 if (propag[ngb]>detectionThreshold && propag[ngb]>stoppingRatio*maxpropag) {
-                                    heap.addValue(propag[ngb], lx[nl]+dx, ly[nl]+dy);
+                                    heap.addValue(propag[ngb], lx[nl]+dx, ly[nl]+dy, lz[nl]+dz);
                                 }
                             }
                         }
                         nl++;
-                        if (nl>=nx+ny) stop=true;
+                        if (nl>=nx+ny+nz) stop=true;
                     }
                 }
                 //System.out.print("("+nl+","+minscore+")");
-                double thetaL = 0.0;
-                float lengthL = 1.0f;
-                float aniL = 1.0f;
                 if (nl>1) {
-                    // compute line parameters and angle
+                    // re-compute line parameters
                     float cx = 0.0f;
                     float cy = 0.0f;
+                    float cz = 0.0f;
                     float cw = 0.0f;
                     
                     for (int n=0;n<nl;n++) {
                         cx += lw[n]*lx[n];
                         cy += lw[n]*ly[n];
+                        cz += lw[n]*lz[n];
                         cw += lw[n];
                     }
                     cx /= cw;
                     cy /= cw;
+                    cz /= cw;
                     
-                    float vxx = 0.0f;
-                    float vxy = 0.0f;
-                    float vyy = 0.0f;
-                    
-                    for (int n=0;n<nl;n++) {
-                        vxx += lw[n]*(lx[n]-cx)*(lx[n]-cx);
-                        vxy += lw[n]*(lx[n]-cx)*(ly[n]-cy);
-                        vyy += lw[n]*(ly[n]-cy)*(ly[n]-cy);
+                    // restart from last vector (still close to the good one, hopefully)
+                    for (int t=0;t<10;t++) {
+                        double vx = 0.0;
+                        double vy = 0.0;
+                        double vz = 0.0;
+                        for (int n=0;n<nl;n++) {
+                            double dot = lw[n]*( (lx[n]-cx)*lvx+(ly[n]-cy)*lvy+(lz[n]-cz)*lvz);
+                            vx += dot*(lx[n]-cx);
+                            vy += dot*(ly[n]-cy);
+                            vz += dot*(lz[n]-cz);
+                        }
+                        double norm = FastMath.sqrt(vx*vx+vy*vy+vz*vz);
+                        lvx = vx/norm;
+                        lvy = vy/norm;
+                        lvz = vz/norm;
                     }
-                    vxx /= cw;
-                    vyy /= cw;
-                    vxy /= cw;
                     
-                    // (vx,vy) is the orthogonal vector, not the direction
-                    double vx = 0.0;
-                    double vy = 1.0;
-                    double norm = 1.0;
-                    
-                    thetaL = 0.0f;
-                    
-                    if (vxy!=0) {
-                        vx = vyy-vxx + FastMath.sqrt( (vyy-vxx)*(vyy-vxx) + 4.0*vxy*vxy);
-                        vy = -2.0*vxy;
-                        norm = vx*vx+vy*vy;
-                        
-                        thetaL = FastMath.atan(vx/vy);
-                    } else if (vxx==0) {
-                        vx = 1.0;
-                        vy = 0.0;
-                        norm = 1.0;
-                        
-                        thetaL = FastMath.PI/2.0;
-                    }
-                    norm = FastMath.sqrt(norm);
                     // compute length? or simply number of voxels?
                     // (maximum projection onto main vector on both sides)
                     float minL = 0.0f;
                     float maxL = 0.0f;
                     for (int n=0;n<nl;n++) {
-                        float dist = (float)( (vy*(lx[n]-cx) - vx*(ly[n]-cy))/norm);
+                        float dist = (float)( lvx*(lx[n]-cx) + lvy*(ly[n]-cy) + lvz*(lz[n]-cz) );
                         if (dist>maxL) maxL = dist;
                         if (dist<minL) minL = dist;
                     }
-                    lengthL = 1.0f+maxL-minL;
-                                       
-                    // grow the region to estimate anisotropy?
-                    // use the minscore as detection threshold
-                    // but only add voxels that don't increase the length
-                    // not great: should happen once all lines have been found
-                    // issue: can grow multiple parallel lines at once, increase
-                    // shape variations -> better to fit multiple lines to a 
-                    // single thick fiber
-                    /*
-                    heap.reset();
-                    for (int n=0;n<nl;n++) {
-                        for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) {
-                            int ngb = lx[n]+dx + nx*(ly[n]+dy);
-                            if (mask[ngb] && !used[ngb]) {
-                                float dist = (float)( (vy*(lx[n]+dx-cx) - vx*(ly[n]+dy-cy))/norm);
-                                float thck = (float)( (vx*(lx[n]+dx-cx) + vy*(ly[n]+dy-cy))/norm);
-                                if (propag[ngb]>=minscore && dist<maxL && dist>minL && thck<maxL && thck>minL) {
-                                    heap.addValue(propag[ngb], lx[n]+dx, ly[n]+dy);
-                                }
-                            }
-                        }
-                    }
-                    stop = false;
-                    while (heap.isNotEmpty() && !stop) {
-                        lx[nl] = heap.getFirstId1();
-                        ly[nl] = heap.getFirstId2();
-                        heap.removeFirst();
-                        if (!used[lx[nl]+ nx*ly[nl]]) {
-                            used[lx[nl]+ nx*ly[nl]] = true;
-    
-                            for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) {
-                                int ngb = lx[nl]+dx + nx*(ly[nl]+dy);
-                                if (mask[ngb] && !used[ngb]) {
-                                    float dist = (float)( (vy*(lx[nl]+dx-cx) - vx*(ly[nl]+dy-cy))/norm);
-                                    float thck = (float)( (vx*(lx[nl]+dx-cx) + vy*(ly[nl]+dy-cy))/norm);
-                                    if (propag[ngb]>=minscore && dist<maxL && dist>minL && thck<maxL && thck>minL) {
-                                        heap.addValue(propag[ngb], lx[nl]+dx, ly[nl]+dy);
-                                    }
-                                }
-                            }
-                            nl++;
-                            if (nl>=nx+ny) stop=true;
-                        }
-                    }
-                    //System.out.print("["+nl+"]");
-                    */
-                    // compute thickness same as before
-                    minL = 0.0f;
-                    maxL = 0.0f;
-                    for (int n=0;n<nl;n++) {
-                        float dist = (float)( (vx*(lx[n]-cx) + vy*(ly[n]-cy))/norm);
-                        if (dist>maxL) maxL = dist;
-                        if (dist<minL) minL = dist;
-                    }
-                    aniL = 1.0f+maxL-minL;   
+                    float lengthL = 1.0f+maxL-minL;
 
+                    // compute thickness same as before
+                    double maxL2 = 0.0;
+                    for (int n=0;n<nl;n++) {
+                        double dist = (lx[n]-cx)*(lx[n]-cx)*(1.0-lvx*lvx)
+                                     +(ly[n]-cy)*(ly[n]-cy)*(1.0-lvy*lvy)
+                                     +(lz[n]-cz)*(lz[n]-cz)*(1.0-lvz*lvz);
+                        if (dist>maxL2) maxL2 = dist;
+                    }
+                    float thickL = (float)FastMath.sqrt(maxL2);
+                    
                     // compute average probability score for the entire line
                     float meanp = 0.0f;
                     for (int n=0;n<nl;n++) {
-                        meanp += propag[lx[n]+nx*ly[n]]/nl;
+                        meanp += propag[lx[n]+nx*ly[n]+nx*ny*lz[n]]/nl;
                     }
                     
                     // Add line to detected ones
                     for (int n=0;n<nl;n++) {
                         // label with starting location id, so each get a different id
-                        lines[lx[n]+nx*ly[n]] = xM+nx*yM;
-                        theta[lx[n]+nx*ly[n]] = (float)(thetaL*180.0/FastMath.PI);
-                        length[lx[n]+nx*ly[n]] = lengthL;
-                        ani[lx[n]+nx*ly[n]] = aniL;
-                        propag[lx[n]+nx*ly[n]] = meanp;
+                        lines[lx[n]+nx*ly[n]+nx*ny*lz[n]] = xM+nx*yM+nx*ny*zM;
+                        theta[lx[n]+nx*ly[n]+nx*ny*lz[n]+nx*ny*nz*X] = (float)lvx;
+                        theta[lx[n]+nx*ly[n]+nx*ny*lz[n]+nx*ny*nz*Y] = (float)lvy;
+                        theta[lx[n]+nx*ly[n]+nx*ny*lz[n]+nx*ny*nz*Z] = (float)lvz;
+                        length[lx[n]+nx*ly[n]+nx*ny*lz[n]] = lengthL;
+                        ani[lx[n]+nx*ly[n]+nx*ny*lz[n]] = 1.0f-thickL/lengthL;
+                        propag[lx[n]+nx*ly[n]+nx*ny*lz[n]] = meanp;
                     }
                 } else {
                     // remove single point detections (artefacts)
@@ -539,36 +466,41 @@ public class LinearFiberMapping3D {
 		if (extend) {
             // expansion to neighboring background regions through binary heap
             ordering.reset();
-            for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
-                int xyz = x + nx*y;
-                if (lines[xyz]!=0) ordering.addValue(propag[xyz], x, y);
+            for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+                int xyz = x + nx*y + nx*ny*z;
+                if (lines[xyz]!=0) ordering.addValue(propag[xyz], x, y, z);
             }
             while (ordering.isNotEmpty()) {
                 float score = ordering.getFirst();
-                int x = ordering.getFirstId1();
-                int y = ordering.getFirstId2();
+                int x = ordering.getFirstX();
+                int y = ordering.getFirstY();
+                int z = ordering.getFirstZ();
                 ordering.removeFirst();
                 
                 int xyz = x + nx*y;
-                for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) {
-                    int ngb = x+dx + nx*(y+dy);
+                for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) for (int dz=-1;dz<=1;dz++) {
+                    int ngb = x+dx + nx*(y+dy) + nx*ny*(z+dz);
                     if (extendRatio<0) {
                         if (mask[ngb] && lines[ngb]==0) {
                             lines[ngb] = lines[xyz];
-                            theta[ngb] = theta[xyz];
+                            theta[ngb+nx*ny*nz*X] = theta[xyz+nx*ny*nz*X];
+                            theta[ngb+nx*ny*nz*Y] = theta[xyz+nx*ny*nz*Y];
+                            theta[ngb+nx*ny*nz*Z] = theta[xyz+nx*ny*nz*Z];
                             length[ngb] = length[xyz];
                             ani[ngb] = ani[xyz];
                             propag[ngb] = score-1.0f;
-                            ordering.addValue(propag[ngb], x+dx,y+dy);
+                            ordering.addValue(propag[ngb], x+dx,y+dy,z+dz);
                         }
                     } else {
                         if (mask[ngb] && propag[ngb]<extendRatio*score) {
                             lines[ngb] = lines[xyz];
-                            theta[ngb] = theta[xyz];
+                            theta[ngb+nx*ny*nz*X] = theta[xyz+nx*ny*nz*X];
+                            theta[ngb+nx*ny*nz*Y] = theta[xyz+nx*ny*nz*Y];
+                            theta[ngb+nx*ny*nz*Z] = theta[xyz+nx*ny*nz*Z];
                             length[ngb] = length[xyz];
                             ani[ngb] = ani[xyz];
                             propag[ngb] = extendRatio*score;
-                            ordering.addValue(propag[ngb], x+dx,y+dy);
+                            ordering.addValue(propag[ngb], x+dx,y+dy,z+dz);
                         }
                     }
                 }	
