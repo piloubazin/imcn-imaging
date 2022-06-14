@@ -194,14 +194,6 @@ public class LinearFiberMapping {
 		float pmax = ImageStatistics.robustMaximum(proba, 0.000001f, 6, nx, ny, nz);
 		if (pmax>0) for (int xyz=0;xyz<nxyz;xyz++) proba[xyz] = Numerics.min(proba[xyz]/pmax,1.0f);
 		
-		// generate a direction vector
-		float[][] direction = new float[2][nxyz];
-		for (int xyz=0;xyz<nxyz;xyz++){
-			float[] vec = directionVector(maxdirection[xyz]);
-			direction[X][xyz] = vec[X];
-			direction[Y][xyz] = vec[Y];
-		}
-		
 		// 3. diffuse the data to neighboring structures
 		BasicInfo.displayMessage("...diffusion\n");
 		

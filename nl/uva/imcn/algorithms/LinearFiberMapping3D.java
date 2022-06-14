@@ -119,7 +119,7 @@ public class LinearFiberMapping3D {
 	public final float[] getProbabilityResponseImage() { return probaImage;}
 	public final int[] getLineImage() { return lineImage;}
 	public final float[] getLengthImage() { return lengthImage;}
-	public final float[] getDirectionImage() { return thetaImage;}
+	public final float[] getAngleImage() { return thetaImage;}
 	public final float[] getAnisotropyImage() { return aniImage;}
 
 	public void execute(){
@@ -464,7 +464,8 @@ public class LinearFiberMapping3D {
             }
 		}
 		if (extend) {
-            // expansion to neighboring background regions through binary heap
+            BasicInfo.displayMessage("...spatial extension\n");
+		    // expansion to neighboring background regions through binary heap
             ordering.reset();
             for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
                 int xyz = x + nx*y + nx*ny*z;
@@ -477,10 +478,10 @@ public class LinearFiberMapping3D {
                 int z = ordering.getFirstZ();
                 ordering.removeFirst();
                 
-                int xyz = x + nx*y;
+                int xyz = x + nx*y + nx*ny*z;
                 for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) for (int dz=-1;dz<=1;dz++) {
                     int ngb = x+dx + nx*(y+dy) + nx*ny*(z+dz);
-                    if (extendRatio<0) {
+                    if (extendRatio<=0) {
                         if (mask[ngb] && lines[ngb]==0) {
                             lines[ngb] = lines[xyz];
                             theta[ngb+nx*ny*nz*X] = theta[xyz+nx*ny*nz*X];
@@ -492,7 +493,7 @@ public class LinearFiberMapping3D {
                             ordering.addValue(propag[ngb], x+dx,y+dy,z+dz);
                         }
                     } else {
-                        if (mask[ngb] && propag[ngb]<extendRatio*score) {
+                        if (mask[ngb] && lines[ngb]==0 && propag[ngb]>extendRatio*score) {
                             lines[ngb] = lines[xyz];
                             theta[ngb+nx*ny*nz*X] = theta[xyz+nx*ny*nz*X];
                             theta[ngb+nx*ny*nz*Y] = theta[xyz+nx*ny*nz*Y];
