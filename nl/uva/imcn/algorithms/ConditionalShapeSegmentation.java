@@ -2996,7 +2996,7 @@ public class ConditionalShapeSegmentation {
 		
 	private int[] atlasVolumeLabels(float[] pval, int[] lval) {
 		// find appropriate threshold to have correct volume; should use a fast marching approach!
-		BinaryHeap2D	heap = new BinaryHeap2D(nax*nay+nay*naz+naz*nax, BinaryHeap4D.MAXTREE);
+		BinaryHeap2D	heap = new BinaryHeap2D(nax*nay+nay*naz+naz*nax, BinaryHeap2D.MAXTREE);
 		int[] labels = new int[naxyz];
         int[] start = new int[nobj];
         float[] bestscore = new float[nobj];

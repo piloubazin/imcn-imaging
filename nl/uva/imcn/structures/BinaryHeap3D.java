@@ -23,9 +23,9 @@ import java.util.*;
 public class BinaryHeap3D {
 	
 	private float[] val;
-	private short[] 	x;
-	private short[] 	y;
-	private short[] 	z;
+	private int[] 	x;
+	private int[] 	y;
+	private int[] 	z;
 	
 	private int 		currentSize;
 	private int			capacity;
@@ -39,9 +39,9 @@ public class BinaryHeap3D {
 		capacity = Nsize;
 		minormax = type;
 		val = new float[capacity+1];
-		x = new short[capacity+1];
-		y = new short[capacity+1];
-		z = new short[capacity+1];
+		x = new int[capacity+1];
+		y = new int[capacity+1];
+		z = new int[capacity+1];
 		if (minormax==MINTREE)
 			val[0] = -1e12f;
 		else if (minormax==MAXTREE)
@@ -78,22 +78,16 @@ public class BinaryHeap3D {
 	 *  add a new value into the binary tree
 	 */
 	public final void addValue(float val_, int x_, int y_, int z_) {
-		addValue(val_,(short)x_,(short)y_,(short)z_);
-	}
-	/**
-	 *  add a new value into the binary tree
-	 */
-	public final void addValue(float val_, short x_, short y_, short z_) {
 		// check for size
 		if  (currentSize == val.length - 1) {
 			float[] oldVal = val;
-			short[] oldX = x;
-			short[] oldY = y;
-			short[] oldZ = z;
+			int[] oldX = x;
+			int[] oldY = y;
+			int[] oldZ = z;
 			val = new float[currentSize+capacity];
-			x = new short[currentSize+capacity];
-			y = new short[currentSize+capacity];
-			z = new short[currentSize+capacity];
+			x = new int[currentSize+capacity];
+			y = new int[currentSize+capacity];
+			z = new int[currentSize+capacity];
 			for (int i=0;i<oldVal.length;i++) {
 				val[i] = oldVal[i];
 				x[i] = oldX[i];
@@ -145,9 +139,9 @@ public class BinaryHeap3D {
 		
 		int child;
 		float tmp = val[hole];
-		short tmpX = x[hole];
-		short tmpY = y[hole];
-		short tmpZ = z[hole];
+		int tmpX = x[hole];
+		int tmpY = y[hole];
+		int tmpZ = z[hole];
 		
 		if (minormax==MINTREE) {
 			for ( ; hole*2 <= currentSize; hole = child ) {
@@ -194,13 +188,13 @@ public class BinaryHeap3D {
 	public final float getFirst() {
 		return val[1];
 	}
-	public final short getFirstX() {
+	public final int getFirstX() {
 		return x[1];
 	}
-	public final short getFirstY() {
+	public final int getFirstY() {
 		return y[1];
 	}
-	public final short getFirstZ() {
+	public final int getFirstZ() {
 		return z[1];
 	}
 	

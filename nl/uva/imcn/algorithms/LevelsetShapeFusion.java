@@ -120,7 +120,7 @@ public class LevelsetShapeFusion {
 		System.out.println("minimum avg. distance: "+mindist);
 		
 		// find appropriate threshold to have correct volume; should use a fast marching approach!
-		BinaryHeap2D	heap = new BinaryHeap2D(nx*ny+ny*nz+nz*nx, BinaryHeap4D.MINTREE);
+		BinaryHeap2D	heap = new BinaryHeap2D(nx*ny+ny*nz+nz*nx, BinaryHeap2D.MINTREE);
 		double vol = 0.0;
         boolean[] label = new boolean[nxyz];
         float initdist = Numerics.min(0.0f, 0.5f*mindist);
