@@ -20,6 +20,8 @@ public class SpectralShapeEmbedding {
 	private float[][] contrastImages = null;
 	private float[] contrastDev = null;
 	private int nc=0;
+	private int nlb=0;
+	private int[] lbl = null;
 	
 	private int nx, ny, nz, nxyz;
 	private float rx, ry, rz;
@@ -36,6 +38,7 @@ public class SpectralShapeEmbedding {
 	private double error = 1e-2;
 	
 	private float[] coordImage;
+	private int[] flatmapImage;
 	
 	// numerical quantities
 	private static final	float	INVSQRT2 = (float)(1.0/FastMath.sqrt(2.0));
@@ -80,17 +83,20 @@ public class SpectralShapeEmbedding {
 				
 	// create outputs
 	public final float[] getCoordinateImage() { return coordImage; }
+	public final int[] getFlatMapImage() { return flatmapImage; }
 
 	public void execute(){
 	    if (systemParam.equals("single")) singleShapeEmbedding();
 	    else if (systemParam.equals("joint")) jointShapeEmbedding();
+	    
+	    buildFlatMap(256);
 	}
 	
 	private final void singleShapeEmbedding() { 
 	    
 	    // 1. build label list
-	    int nlb = ObjectLabeling.countLabels(labelImage, nx, ny, nz);
-	    int[] lbl = ObjectLabeling.listOrderedLabels(labelImage, nx, ny, nz);
+	    nlb = ObjectLabeling.countLabels(labelImage, nx, ny, nz);
+	    lbl = ObjectLabeling.listOrderedLabels(labelImage, nx, ny, nz);
 	    System.out.println("labels: "+nlb);
 		
 	    spaceDev *= spaceDev;
@@ -484,6 +490,10 @@ public class SpectralShapeEmbedding {
 	}
 
     private final void jointShapeEmbedding() { 
+	    // 1. build label list
+	    int nlb = ObjectLabeling.countLabels(labelImage, nx, ny, nz);
+	    int[] lbl = ObjectLabeling.listOrderedLabels(labelImage, nx, ny, nz);
+	    System.out.println("labels: "+nlb);
 	    
     }
     
@@ -625,4 +635,41 @@ public class SpectralShapeEmbedding {
         }
     }
 
+    private final void buildFlatMap(int dim) {
+        // map dimensions
+        flatmapImage = new int[(nlb-1)*dim*dim];
+        
+	    for (int n=0;n<nlb;n++) if (n>0) {
+	        float minY = 0.0f;
+	        float maxY = 0.0f;
+	        float minZ = 0.0f;
+	        float maxZ = 0.0f;
+	        
+	        // find min/max coordinates
+	        for (int xyz=0;xyz<nxyz;xyz++) if (labelImage[xyz]==lbl[n]) {
+	            if (coordImage[xyz+Y*nxyz]<minY) minY = coordImage[xyz+Y*nxyz];
+	            if (coordImage[xyz+Y*nxyz]>maxY) maxY = coordImage[xyz+Y*nxyz];
+	            if (coordImage[xyz+Z*nxyz]<minZ) minZ = coordImage[xyz+Z*nxyz];
+	            if (coordImage[xyz+Z*nxyz]>maxZ) maxZ = coordImage[xyz+Z*nxyz];
+	        }
+	        float dY = (maxY-minY)/(dim+1.0f);
+	        float dZ = (maxZ-minZ)/(dim+1.0f);
+	        
+	        //float[] dist = new float[dim*dim];
+	        for (int xyz=0;xyz<nxyz;xyz++) if (labelImage[xyz]==lbl[n]) {
+	            // find the correct bin
+	            int binY = Numerics.round((coordImage[xyz+Y*nxyz]-minY)/dY);
+	            int binZ = Numerics.round((coordImage[xyz+Z*nxyz]-minY)/dZ);
+	            
+	            //float newdist = Numerics.square((coordImage[xyz+Y*nxyz]-minY)/dY-binY)
+	            //               +Numerics.square((coordImage[xyz+Z*nxyz]-minZ)/dZ-binZ);
+	            int idmap = binY+dim*binZ+dim*dim*(n-1);
+	            
+	            // simply count the number of voxels represented
+	            flatmapImage[idmap]++;
+	        }
+	    }
+	    return;
+    }
+    
 }
