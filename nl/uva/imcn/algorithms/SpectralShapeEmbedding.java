@@ -644,7 +644,7 @@ public class SpectralShapeEmbedding {
 	    lbl = ObjectLabeling.listOrderedLabels(labelImage, nx, ny, nz);
 	    System.out.println("labels: "+nlb);
 	    
-	    if (combined) buildJointFlatMap(size);
+	    if (combined) buildJointProjectionFlatMap(size);
 	    else buildPcaFlatMap(size);
     }
     
@@ -804,8 +804,8 @@ public class SpectralShapeEmbedding {
 	            if (coordImage[xyz+Z*nxyz]<minZ) minZ = coordImage[xyz+Z*nxyz];
 	            if (coordImage[xyz+Z*nxyz]>maxZ) maxZ = coordImage[xyz+Z*nxyz];
 	        }
-	        float dY = (float)(FastMath.sqrt(nlb-1)*(maxY-minY)/(dim+1.0f));
-	        float dZ = (float)(FastMath.sqrt(nlb-1)*(maxZ-minZ)/(dim+1.0f));
+	        float dY = (float)(2.0*FastMath.sqrt(nlb-1)*(maxY-minY)/(dim+1.0f));
+	        float dZ = (float)(2.0*FastMath.sqrt(nlb-1)*(maxZ-minZ)/(dim+1.0f));
 	        // for scale-preserving mappings? how about a global scale? or scaling by volume?
 	        d0 = Numerics.max(d0,dY,dZ);
 	        
@@ -834,6 +834,10 @@ public class SpectralShapeEmbedding {
 	            if (coordImage[xyz+Z*nxyz]<minZ) minZ = coordImage[xyz+Z*nxyz];
 	            if (coordImage[xyz+Z*nxyz]>maxZ) maxZ = coordImage[xyz+Z*nxyz];
 	        }
+	        float dY = (float)(2.0*FastMath.sqrt(nlb-1)*(maxY-minY)/(dim+1.0f));
+	        float dZ = (float)(2.0*FastMath.sqrt(nlb-1)*(maxZ-minZ)/(dim+1.0f));
+	        // for scale-preserving mappings? how about a global scale? or scaling by volume?
+	        d0 = Numerics.min(dY,dZ);
 	        
 	        for (int xyz=0;xyz<nxyz;xyz++) if (labelImage[xyz]==lbl[n]) {
 	            // find the correct bin
@@ -951,6 +955,203 @@ public class SpectralShapeEmbedding {
 	            
                     // simply count the number of voxels represented
                     flatmapImage[idmap]++;
+                }
+	        }
+	    }
+	    return;
+    }
+
+    private final void buildJointProjectionFlatMap(int dim) {
+        
+        System.out.println("Joint flat maps");
+        
+        // first define the global Laplacian embedding
+        float[][] centroids = new float[nlb-1][3];
+        for (int n=0;n<nlb;n++) if (n>0) {
+            int npt=0;
+            for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+                int xyz = x+nx*y+nx*ny*z;
+                if (labelImage[xyz]==lbl[n]) {    
+                    centroids[n-1][X] += x;
+                    centroids[n-1][Y] += y;
+                    centroids[n-1][Z] += z;
+                    npt++;
+                }
+            }
+            if (npt>0) {
+                centroids[n-1][X] /= npt;
+                centroids[n-1][Y] /= npt;
+                centroids[n-1][Z] /= npt;
+            }
+        }
+        System.out.println("..centroids");
+        
+        double maxdist = 50.0;
+        double[][] matrix = new double[nlb-1][nlb-1];
+        for (int l1=1;l1<nlb;l1++) for (int l2=l1+1;l2<nlb;l2++) {
+            double dist = (centroids[l1-1][X]-centroids[l2-1][X])*(centroids[l1-1][X]-centroids[l2-1][X])
+                         +(centroids[l1-1][Y]-centroids[l2-1][Y])*(centroids[l1-1][Y]-centroids[l2-1][Y])
+                         +(centroids[l1-1][Z]-centroids[l2-1][Z])*(centroids[l1-1][Z]-centroids[l2-1][Z]);
+            // when computing a sparse version, only keep strict 26-C neighbors             
+            if (sparse && dist>3.0*maxdist*maxdist) {
+                matrix[l1-1][l2-1] = 0.0;
+            } else {
+                if (sparse) matrix[l1-1][l2-1] = 1.0/FastMath.sqrt(dist);
+                else matrix[l1-1][l2-1] = FastMath.exp(-0.5*dist/maxdist);                
+            }
+            matrix[l2-1][l1-1] = matrix[l1-1][l2-1];
+        }
+        // rescale to have values close to 1? or not needed?    
+        System.out.println("..correlations");
+         
+        // build Laplacian
+        double[] degree = new double[nlb-1];
+        for (int l1=0;l1<nlb-1;l1++) {
+            degree[l1] = 0.0;
+            for (int l2=0;l2<nlb-1;l2++) {
+                degree[l1] += matrix[l1][l2];
+            }
+        }
+        for (int l1=0;l1<nlb-1;l1++) {
+            matrix[l1][l1] = 1.0;
+        }
+        for (int l1=0;l1<nlb-1;l1++) for (int l2=l1+1;l2<nlb-1;l2++) {
+            matrix[l1][l2] = -matrix[l1][l2]/degree[l1];
+            matrix[l2][l1] = -matrix[l2][l1]/degree[l2];
+        }
+        System.out.println("..Laplacian");
+        RealMatrix mtx = null;
+        mtx = new Array2DRowRealMatrix(matrix);
+        EigenDecomposition eig = new EigenDecomposition(mtx);
+        
+        System.out.println("first four eigen values:");
+        double[] eigval = new double[4];
+        for (int s=0;s<4;s++) {
+            eigval[s] = eig.getRealEigenvalues()[s];
+            System.out.print(eigval[s]+", ");
+        }
+        // each centroid location maps to a 2D location
+        double[] frameY = new double[nlb-1];
+        double[] frameZ = new double[nlb-1];
+        double fminY = 0.0;
+        double fmaxY = 0.0;
+        double fminZ = 0.0;
+        double fmaxZ = 0.0;
+        
+        for (int l=0;l<nlb-1;l++) {
+            frameY[l] = eig.getV().getEntry(l,Y);
+            frameZ[l] = eig.getV().getEntry(l,Z);
+            if (frameY[l]<fminY) fminY = frameY[l];
+            if (frameY[l]>fmaxY) fmaxY = frameY[l];
+            if (frameZ[l]<fminZ) fminZ = frameZ[l];
+            if (frameZ[l]>fmaxZ) fmaxZ = frameZ[l];
+        }
+        double dfY = (fmaxY-fminY)/(dim+1.0);
+        double dfZ = (fmaxZ-fminZ)/(dim+1.0);
+	    double df0 = Numerics.max(dfY,dfZ);
+	        
+        // map dimensions
+        flatmapImage = new int[dim*dim];
+        double d0=0.0;
+	    for (int n=0;n<nlb;n++) if (n>0) {
+	        // main location on map
+	        int fY = Numerics.floor((frameY[n-1]-fminY)/df0);
+	        int fZ = Numerics.floor((frameZ[n-1]-fminZ)/df0);
+	        
+	        // build orientation PCA weighted by first component
+	        double[] center = new double[4];
+	        
+	        // first the center: give more weight to regions near zero
+	        for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+                int xyz = x+nx*y+nx*ny*z;
+                if (labelImage[xyz]==lbl[n]) {
+                    double weight = 1.0/Numerics.max(1e-6,Numerics.abs(coordImage[xyz+Y*nxyz]));
+                    center[X] += weight*x;
+                    center[Y] += weight*y;
+                    center[Z] += weight*z;
+                    center[T] += weight;
+                }
+            }
+            center[X] /= center[T];
+            center[Y] /= center[T];
+            center[Z] /= center[T];
+            
+            // second the orientation matrix giving more wieght to regions far from zero
+            double[][] orient = new double[3][3];
+            double sumweight = 0.0;
+            
+	        for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+                int xyz = x+nx*y+nx*ny*z;
+                if (labelImage[xyz]==lbl[n]) {
+                    double weight = Numerics.max(1e-6,Numerics.abs(coordImage[xyz+Y*nxyz]));
+                    orient[X][X] += weight*(x-center[X])*(x-center[X]);
+                    orient[Y][Y] += weight*(y-center[Y])*(y-center[Y]);
+                    orient[Z][Z] += weight*(z-center[Z])*(z-center[Z]);
+                    orient[X][Y] += weight*(x-center[X])*(y-center[Y]);
+                    orient[Y][Z] += weight*(y-center[Y])*(z-center[Z]);
+                    orient[Z][X] += weight*(z-center[Z])*(x-center[X]);
+                    sumweight += weight;
+                }
+            }
+            orient[Y][X] = orient[X][Y];
+            orient[Z][Y] = orient[Y][Z];
+            orient[X][Z] = orient[Z][X];
+            for (int i=0;i<3;i++) for (int j=0;j<3;j++) orient[i][j] /= sumweight;
+            
+            // PCA: main 2 directions define the optimal cutting plane to include most of the first gradient variations
+            mtx = new Array2DRowRealMatrix(orient);
+            eig = new EigenDecomposition(mtx);
+            System.out.println("eigen values:");
+            eigval = new double[3];
+            for (int s=0;s<3;s++) {
+                eigval[s] = eig.getRealEigenvalues()[s];
+                System.out.print(eigval[s]+", ");
+            }
+            // project coordinates along the largest two PCA components
+            double[] dirY = new double[3];
+            double[] dirZ = new double[3];
+            for (int s=0;s<3;s++) {
+                dirY[s] = eig.getV().getEntry(s,Y);
+                dirZ[s] = eig.getV().getEntry(s,Z);
+            }
+	        double minY = 0.0;
+	        double maxY = 0.0;
+	        double minZ = 0.0;
+	        double maxZ = 0.0;
+	        
+	        // find min/max coordinates
+	        for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+                int xyz = x+nx*y+nx*ny*z;
+                if (labelImage[xyz]==lbl[n]) {
+                    double coordY = (x-center[X])*dirY[X] + (y-center[Y])*dirY[Y] + (z-center[Z])*dirY[Z];
+                    double coordZ = (x-center[X])*dirZ[X] + (y-center[Y])*dirZ[Y] + (z-center[Z])*dirZ[Z];
+                                      
+                    if (coordY<minY) minY = coordY;
+                    if (coordY>maxY) maxY = coordY;
+                    if (coordZ<minZ) minZ = coordZ;
+                    if (coordZ>maxZ) maxZ = coordZ;
+                }
+	        }
+	        double dY = (maxY-minY)/(dim+1.0f);
+	        double dZ = (maxZ-minZ)/(dim+1.0f);
+	        // for scale-preserving mappings?
+	        d0 = Numerics.max(dY,dZ);
+	        
+	        for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+                int xyz = x+nx*y+nx*ny*z;
+                if (labelImage[xyz]==lbl[n]) {
+                    double coordY = (x-center[X])*dirY[X] + (y-center[Y])*dirY[Y] + (z-center[Z])*dirY[Z];
+                    double coordZ = (x-center[X])*dirZ[X] + (y-center[Y])*dirZ[Y] + (z-center[Z])*dirZ[Z];
+                    // find the correct bin
+                    int binY = Numerics.floor((coordY-minY)/d0);
+                    int binZ = Numerics.floor((coordZ-minZ)/d0);
+                    
+                    binY = Numerics.bounded(fY+binY,0,dim-1);
+                    binZ = Numerics.bounded(fZ+binZ,0,dim-1);
+                    int idmap = binY+dim*binZ;
+	            
+                    // simply count the number of voxels represented
+                    flatmapImage[idmap]=lbl[n];
                 }
 	        }
 	    }
