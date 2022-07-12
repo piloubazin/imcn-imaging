@@ -1132,8 +1132,8 @@ public class SpectralShapeEmbedding {
                     if (coordZ>maxZ) maxZ = coordZ;
                 }
 	        }
-	        double dY = (maxY-minY)/(dim+1.0f);
-	        double dZ = (maxZ-minZ)/(dim+1.0f);
+	        double dY = (float)(2.0*FastMath.sqrt(nlb-1)*(maxY-minY)/(dim+1.0f));
+	        double dZ = (float)(2.0*FastMath.sqrt(nlb-1)*(maxZ-minZ)/(dim+1.0f));
 	        // for scale-preserving mappings?
 	        d0 = Numerics.max(dY,dZ);
 	        
