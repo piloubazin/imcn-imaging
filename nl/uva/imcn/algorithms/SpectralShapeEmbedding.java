@@ -47,10 +47,10 @@ public class SpectralShapeEmbedding {
 	private static final	float	SQRT3 = (float)FastMath.sqrt(3.0);
 
 	// direction labeling		
-	public	static	final	byte	X = 0;
-	public	static	final	byte	Y = 1;
-	public	static	final	byte	Z = 2;
-	public	static	final	byte	T = 3;
+	public	static	byte	X = 0;
+	public	static	byte	Y = 1;
+	public	static	byte	Z = 2;
+	public	static	byte	T = 3;
 	
 	// for debug and display
 	private static final boolean		debug=true;
@@ -628,14 +628,14 @@ public class SpectralShapeEmbedding {
         }
     }
 
-    public final void buildSpectralMaps(int size, boolean combined) { 
+    public final void buildSpectralMaps(int size, boolean combined, int offset) { 
 	    // 1. build label list
 	    nlb = ObjectLabeling.countLabels(labelImage, nx, ny, nz);
 	    lbl = ObjectLabeling.listOrderedLabels(labelImage, nx, ny, nz);
 	    System.out.println("labels: "+nlb);
 	    
 	    if (combined) buildJointFlatMap(size);
-	    else buildFlatMap(size);
+	    else buildFlatMap(size, offset);
     }
     
     public final void buildSpectralProjectionMaps(int size, boolean combined) { 
@@ -648,7 +648,16 @@ public class SpectralShapeEmbedding {
 	    else buildPcaFlatMap(size);
     }
     
-    private final void buildFlatMap(int dim) {
+    private final void buildFlatMap(int dim, int offset) {
+        // circular offset for different combinations
+        if (offset==1) {
+            Y = 2;
+            Z = 3;
+        } else if (offset==2) {
+            Y = 3;
+            Z = 1;
+        }
+        
         // map dimensions
         flatmapImage = new int[dim*dim*(nlb-1)];
         
