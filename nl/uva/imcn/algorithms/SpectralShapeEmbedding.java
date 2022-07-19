@@ -837,6 +837,7 @@ public class SpectralShapeEmbedding {
                                 coordImage[ngb+Y*nxyz] = (float)init[1][v];
                                 coordImage[ngb+Z*nxyz] = (float)init[2][v];
                                 coordImage[ngb+T*nxyz] = (float)init[3][v];
+                                npt++;
                             }
                         }
                     }
