@@ -824,6 +824,11 @@ public class SpectralShapeEmbedding {
                 }
                 
                 runSparseLaplacianEigenGame(mtxval, mtxid1, mtxid2, mtxinv, nmtx, vol, 4, init);
+                
+                mtxval = null;
+                mtxid1 = null;
+                mtxid2 = null;
+                mtxinv = null;
                               
                 v=0;
                 for (int x=0;x<nx;x+=sub) for (int y=0;y<ny;y+=sub) for (int z=0;z<nz;z+=sub) {
@@ -843,6 +848,7 @@ public class SpectralShapeEmbedding {
                     }
                     if (npt>0) v++;
                 }
+                init = null;
                 
             }
             
@@ -978,6 +984,7 @@ public class SpectralShapeEmbedding {
             // calculate required number of iterations
             double norm = 0.0;
             for (int n=0;n<nm;n++) norm += Mv[vi][n]*Mv[vi][n];
+            System.out.println("norm: "+norm);
             
             double Ti = 5.0/4.0/Numerics.min(norm/4.0, error*error);
             System.out.println("-> "+Ti+" iterations");
@@ -986,7 +993,10 @@ public class SpectralShapeEmbedding {
             
             // main loop
             double[] grad = new double[nm];
-            for (int t=0;t<Ti;t++) {
+//            for (int t=0;t<Ti;t++) {
+            int t=0;
+            while (t<Ti && Numerics.abs(norm/4.0-1.0)>error*error) {
+                t++;
                 //System.out.print(".");
                 // gradient computation
                 for (int n=0;n<nm;n++) {
@@ -1046,13 +1056,16 @@ public class SpectralShapeEmbedding {
                         }
                     }*/
                 }
+    
+                // recompute norm to stop earlier if possible?
+                norm = 0.0;
+                for (int n=0;n<nm;n++) norm += Mv[vi][n]*Mv[vi][n];
             }
+            System.out.println(" ("+t+" needed, norm: "+norm+")");
             
-            // post-process: compute summary quantities for next step
+            // post-process: compute summary quantities for next eigenvector
             vMv[vi] = 0.0;
             for (int n=0;n<nm;n++) vMv[vi] += vect[vi][n]*Mv[vi][n];
-    
-            // done??
         }
     }
 
