@@ -94,7 +94,7 @@ public class SpectralShapeEmbedding {
         //singleShapeEmbedding();
 	}
 	
-	private final void singleShapeEmbedding() { 
+	public final void singleShapeEmbedding() { 
 	    
 	    // 1. build label list
 	    nlb = ObjectLabeling.countLabels(labelImage, nx, ny, nz);
@@ -405,7 +405,7 @@ public class SpectralShapeEmbedding {
                     }
                 }
                 
-                runSparseLaplacianEigenGame(mtxval, mtxid1, mtxid2, mtxinv, nmtx, vol, 4, init);
+                runSparseLaplacianEigenGame(mtxval, mtxid1, mtxid2, mtxinv, nmtx, vol, 4, init, alpha, error);
                               
                 v=0;
                 for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
@@ -492,7 +492,7 @@ public class SpectralShapeEmbedding {
 		return;
 	}
 
-	private final void singleShapeRecursiveEmbedding() { 
+	public final void singleShapeRecursiveEmbedding() { 
 	    
 	    // 1. build label list
 	    nlb = ObjectLabeling.countLabels(labelImage, nx, ny, nz);
@@ -694,12 +694,15 @@ public class SpectralShapeEmbedding {
                 }
                 if (npt>0) v++;
             }
+    
             // refine the result with eigenGame?
+            //double vol0 = vol; 
+            double vol0 = msize; 
             if (eigenGame) while (sub>1) {
                 // downscale by 1
                 sub--;
                 
-                // 
+                // recompute volumes
                 vol=0;
 	            for (int x=0;x<nx;x+=sub) for (int y=0;y<ny;y+=sub) for (int z=0;z<nz;z+=sub) {
                     int xyz = x+nx*y+nx*ny*z;
@@ -714,7 +717,7 @@ public class SpectralShapeEmbedding {
                     }
                     if (npt>0) vol++;
                 }
-                System.out.println("Eigen game volume: "+vol);
+                System.out.println("Eigen game volume: "+vol+" (ratio: "+vol/vol0+")");
                 
                 // build coordinate and contrast arrays
                 coord = new float[3][vol];
@@ -811,6 +814,7 @@ public class SpectralShapeEmbedding {
                 
                 // get initial vector guesses from subsampled data
                 double[][] init = new double[4][vol];
+                double[] norm = new double[4];
                 v=0;
                 for (int x=0;x<nx;x+=sub) for (int y=0;y<ny;y+=sub) for (int z=0;z<nz;z+=sub) {
                     int xyz = x+nx*y+nx*ny*z;
@@ -819,11 +823,29 @@ public class SpectralShapeEmbedding {
                         init[1][v] = coordImage[xyz+Y*nxyz];
                         init[2][v] = coordImage[xyz+Z*nxyz];
                         init[3][v] = coordImage[xyz+T*nxyz];
+                        
+                        norm[0] += init[0][v]*init[0][v];
+                        norm[1] += init[1][v]*init[1][v];
+                        norm[2] += init[2][v]*init[2][v];
+                        norm[3] += init[3][v]*init[3][v];
                         v++;
                     }
                 }
+                // rescale to ||V||=1
+                for (int i=0;i<4;i++) {
+                    norm[i] = FastMath.sqrt(norm[i]);
+                    for (int vi=0;vi<vol;vi++) {
+                        init[i][vi] /= norm[i];
+                    }
+                }
                 
-                runSparseLaplacianEigenGame(mtxval, mtxid1, mtxid2, mtxinv, nmtx, vol, 4, init);
+                //runSparseLaplacianEigenGame(mtxval, mtxid1, mtxid2, mtxinv, nmtx, vol, 4, init, alpha, error*FastMath.sqrt(vol/vol0));
+                runSparseLaplacianEigenGame(mtxval, mtxid1, mtxid2, mtxinv, nmtx, vol, 4, init, alpha*FastMath.pow(vol/vol0,0.25), error*FastMath.pow(vol/vol0,0.25));
+                //runSparseLaplacianEigenGame(mtxval, mtxid1, mtxid2, mtxinv, nmtx, vol, 4, init, alpha, error);
+
+                // update the error parameter to reduce the number of steps? no keep to baseline
+                // because the error is not updated
+                //vol0 = vol;
                 
                 mtxval = null;
                 mtxid1 = null;
@@ -924,7 +946,7 @@ public class SpectralShapeEmbedding {
 		return;
 	}
 
-    private final void runSparseLaplacianEigenGame(double[] mtval, int[] mtid1, int[] mtid2, int[][] mtinv, int nn0, int nm, int nv, double[][] init) {
+    private final void runSparseLaplacianEigenGame(double[] mtval, int[] mtid1, int[] mtid2, int[][] mtinv, int nn0, int nm, int nv, double[][] init, double alpha, double error) {
         //double 		error = 1e-2;	// error tolerance
         //double      alpha = 1e-3;    // step size
         int iter;
@@ -993,18 +1015,24 @@ public class SpectralShapeEmbedding {
             
             // main loop
             double[] grad = new double[nm];
-//            for (int t=0;t<Ti;t++) {
-            int t=0;
-            while (t<Ti && Numerics.abs(norm/4.0-1.0)>error*error) {
-                t++;
+            for (int t=0;t<Ti;t++) {
+//            int t=0;
+//            while (t<Ti && Numerics.abs(norm/4.0-1.0)>error*error) {
+//                t++;
                 //System.out.print(".");
+                // pre-compute product
+                double[] viMvj = new double[nv];
+                for (int vj=0;vj<vi;vj++) {
+                    viMvj[vj] = 0.0;
+                    for (int m=0;m<nm;m++) viMvj[vj] += Mv[vj][m]*vect[vi][m];
+                }
                 // gradient computation
                 for (int n=0;n<nm;n++) {
                     grad[n] = 2.0*Mv[vi][n];
                     for (int vj=0;vj<vi;vj++) {
-                        double prod = 0.0;
-                        for (int m=0;m<nm;m++) prod += Mv[vj][m]*vect[vi][m];
-                        grad[n] -= 2.0*prod/vMv[vj]*Mv[vj][n];
+                        //double prod = 0.0;
+                        //for (int m=0;m<nm;m++) prod += Mv[vj][m]*vect[vi][m];
+                        grad[n] -= 2.0*viMvj[vj]/vMv[vj]*Mv[vj][n];
                     }
                 }
                 // Riemannian projection
@@ -1061,11 +1089,32 @@ public class SpectralShapeEmbedding {
                 norm = 0.0;
                 for (int n=0;n<nm;n++) norm += Mv[vi][n]*Mv[vi][n];
             }
-            System.out.println(" ("+t+" needed, norm: "+norm+")");
+            //System.out.println(" ("+t+" needed, norm: "+norm+")");
+            System.out.println("norm: "+norm);
             
             // post-process: compute summary quantities for next eigenvector
             vMv[vi] = 0.0;
             for (int n=0;n<nm;n++) vMv[vi] += vect[vi][n]*Mv[vi][n];
+        }
+        
+        // check the result
+        System.out.println("final vector orthogonality");
+        for (int v1=0;v1<nv-1;v1++) for (int v2=v1+1;v2<nv;v2++) {
+            double prod=0.0;
+            for (int m=0;m<nm;m++) prod += vect[v1][m]*vect[v2][m];
+            System.out.println("v"+v1+" * v"+v2+" = "+prod);
+        }
+        System.out.println("final vector eigenscore");
+        for (int v1=0;v1<nv;v1++) {
+            double normvect=0.0;
+            double normMv=0.0;
+            double prod=0.0;
+            for (int m=0;m<nm;m++) {
+                normvect += vect[v1][m]*vect[v1][m];
+                normMv += Mv[v1][m]*Mv[v1][m];
+                prod += vect[v1][m]*Mv[v1][m];
+            }
+            System.out.println("v"+v1+" . Mv"+v1+" = "+prod/FastMath.sqrt(normvect*normMv)+" (lambda = "+normMv/normvect+")");
         }
     }
 
