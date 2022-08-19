@@ -38,7 +38,7 @@ public class SpectralShapeEmbedding {
 	private double error = 1e-2;
 	
 	private float[] coordImage;
-	private int[] flatmapImage;
+	private float[] flatmapImage;
 	
 	// numerical quantities
 	private static final	float	INVSQRT2 = (float)(1.0/FastMath.sqrt(2.0));
@@ -86,7 +86,7 @@ public class SpectralShapeEmbedding {
 				
 	// create outputs
 	public final float[] getCoordinateImage() { return coordImage; }
-	public final int[] getFlatMapImage() { return flatmapImage; }
+	public final float[] getFlatMapImage() { return flatmapImage; }
 	public final int getLabelNumber() { return nlb; }
 
 	public void execute(){
@@ -209,12 +209,39 @@ public class SpectralShapeEmbedding {
                     else matrix[v1][v2] = FastMath.exp(-0.5*dist/spaceDev);
                     
                     if (nc>0) {
+                        /*
                         double diff = 0.0;
                         for (int c=0;c<nc;c++) {
                             diff += (contrasts[c][v1]-contrasts[c][v2])
                                    *(contrasts[c][v1]-contrasts[c][v2])/contrastDev[c];
                         }
                         matrix[v1][v2] *= FastMath.exp(-0.5*diff);
+                        */
+                        /*
+                        boolean boundary = false;
+                        for (int c=0;c<nc;c++) {
+                            double diff = (contrasts[c][v1]-contrasts[c][v2])
+                                         *(contrasts[c][v1]-contrasts[c][v2])/contrastDev[c];
+                            if (diff>1) boundary=true;
+                        }                        
+                        if (boundary) matrix[v1][v2] *= 0.5;
+                        */
+                        /*
+                        double diff = 0.0;
+                        for (int c=0;c<nc;c++) {
+                            diff += (contrasts[c][v1]-contrasts[c][v2])
+                                   *(contrasts[c][v1]-contrasts[c][v2])/contrastDev[c];
+                        }
+                        diff /= nc;
+                        matrix[v1][v2] = 1.0/(0.1+diff);
+                        */
+                        double avg=0.0;
+                        for (int c=0;c<nc;c++) {
+                            avg += (contrasts[c][v1]+contrasts[c][v2])/contrastDev[c];
+                        }
+                        avg /= 2.0*nc;
+                        matrix[v1][v2] = 1.0/Numerics.max(0.1,avg);
+                         
                     }
                 }
                 matrix[v2][v1] = matrix[v1][v2];
@@ -365,12 +392,38 @@ public class SpectralShapeEmbedding {
                     if (sparse && dist<=1.0) {
                         double coeff = 1.0/FastMath.sqrt(dist);
                         if (nc>0) {
+                            /*
                             double diff = 0.0;
                             for (int c=0;c<nc;c++) {
                                 diff += (contrasts[c][v1]-contrasts[c][v2])
                                        *(contrasts[c][v1]-contrasts[c][v2])/contrastDev[c];
                             }
                             coeff *= FastMath.exp(-0.5*diff);
+                            */
+                            /*
+                            boolean boundary = false;
+                            for (int c=0;c<nc;c++) {
+                                double diff = (contrasts[c][v1]-contrasts[c][v2])
+                                       *(contrasts[c][v1]-contrasts[c][v2])/contrastDev[c];
+                                if (diff>1) boundary=true;
+                            }
+                            if (boundary) coeff *= 0.5;
+                            */
+                            /*
+                            double diff = 0.0;
+                            for (int c=0;c<nc;c++) {
+                                diff += (contrasts[c][v1]-contrasts[c][v2])
+                                       *(contrasts[c][v1]-contrasts[c][v2])/contrastDev[c];
+                            }
+                            diff /= nc;
+                            coeff = 1.0/(0.1+diff);
+                            */
+                            double avg=0.0;
+                            for (int c=0;c<nc;c++) {
+                                avg += (contrasts[c][v1]+contrasts[c][v2])/contrastDev[c];
+                            }
+                            avg /= 2.0*nc;
+                            coeff = 1.0/Numerics.max(0.1,avg);
                         }
                         mtxval[id] = coeff;
                         mtxid1[id] = v1;
@@ -1149,8 +1202,12 @@ public class SpectralShapeEmbedding {
         }
         
         // map dimensions
-        flatmapImage = new int[dim*dim*(nlb-1)];
-        
+        /*
+        float[] flatmapCount = new float[dim*dim*(nlb-1)];
+        if (nc>0) flatmapImage = new float[dim*dim*(nlb-1)];
+        else flatmapImage = flatmapCount;
+        */
+        flatmapImage = new float[dim*dim*(nlb-1)];
 	    for (int n=0;n<nlb;n++) if (n>0) {
 	        float minY = 0.0f;
 	        float maxY = 0.0f;
@@ -1187,11 +1244,23 @@ public class SpectralShapeEmbedding {
 	            //float newdist = Numerics.square((coordImage[xyz+Y*nxyz]-minY)/dY-binY)
 	            //               +Numerics.square((coordImage[xyz+Z*nxyz]-minZ)/dZ-binZ);
 	            int idmap = binY+dim*binZ+dim*dim*(n-1);
-	            
+	            /*
 	            // simply count the number of voxels represented
-	            flatmapImage[idmap]++;
+	            flatmapCount[idmap]++;
+	            // average contrast
+	            if (nc>0) flatmapImage[idmap] += contrastImages[0][xyz];
+	            */
+	            if (nc>0) flatmapImage[idmap] = Numerics.max(flatmapImage[idmap], contrastImages[0][xyz]);
+	            else flatmapImage[idmap]++;
 	        }
 	    }
+	    /*
+	    if (nc>0) {
+	        for (int i=0;i<dim*dim*(nlb-1);i++) {
+	            if (flatmapCount[i]>0) flatmapImage[i] /= flatmapCount[i];
+	        }
+	    }
+	    */
 	    return;
     }
 
@@ -1315,7 +1384,7 @@ public class SpectralShapeEmbedding {
 	    }
 	    
         // map dimensions
-        flatmapImage = new int[dim*dim];
+        flatmapImage = new float[dim*dim];
 	    for (int n=0;n<nlb;n++) if (n>0) {
 	        // main location on map
 	        int fY = Numerics.floor((frameY[n-1]-fminY)/df0);
@@ -1357,7 +1426,7 @@ public class SpectralShapeEmbedding {
 
     private final void buildPcaFlatMap(int dim) {
         // map dimensions
-        flatmapImage = new int[dim*dim*(nlb-1)];
+        flatmapImage = new float[dim*dim*(nlb-1)];
         
 	    for (int n=0;n<nlb;n++) if (n>0) {
 	        // build orientation PCA weighted by first component
@@ -1550,7 +1619,7 @@ public class SpectralShapeEmbedding {
 	    double df0 = Numerics.max(dfY,dfZ);
 	        
         // map dimensions
-        flatmapImage = new int[dim*dim];
+        flatmapImage = new float[dim*dim];
         double d0=0.0;
 	    for (int n=0;n<nlb;n++) if (n>0) {
 	        // main location on map
