@@ -240,7 +240,7 @@ public class SpectralShapeEmbedding {
                             avg += (contrasts[c][v1]+contrasts[c][v2])/contrastDev[c];
                         }
                         avg /= 2.0*nc;
-                        matrix[v1][v2] = 1.0/Numerics.max(0.1,avg);
+                        matrix[v1][v2] = 1.0/Numerics.max(0.01,avg);
                          
                     }
                 }
@@ -423,7 +423,7 @@ public class SpectralShapeEmbedding {
                                 avg += (contrasts[c][v1]+contrasts[c][v2])/contrastDev[c];
                             }
                             avg /= 2.0*nc;
-                            coeff = 1.0/Numerics.max(0.1,avg);
+                            coeff = 1.0/Numerics.max(0.01,avg);
                         }
                         mtxval[id] = coeff;
                         mtxid1[id] = v1;
@@ -1194,11 +1194,20 @@ public class SpectralShapeEmbedding {
     private final void buildFlatMap(int dim, int offset) {
         // circular offset for different combinations
         if (offset==1) {
-            Y = 2;
-            Z = 3;
+            X=0;
+            Y=2;
+            Z=3;
+            T=1;
         } else if (offset==2) {
-            Y = 3;
-            Z = 1;
+            X=0;
+            Y=3;
+            Z=1;
+            T=2;
+        } else {
+            X=0;
+            Y=1;
+            Z=2;
+            T=3;
         }
         
         // map dimensions
@@ -1224,7 +1233,7 @@ public class SpectralShapeEmbedding {
 	        float dY = (maxY-minY)/(dim+1.0f);
 	        float dZ = (maxZ-minZ)/(dim+1.0f);
 	        // for scale-preserving mappings?
-	        float d0 = Numerics.max(dY,dZ);
+	        //float d0 = Numerics.max(dY,dZ);
 	        
 	        // global representation as a 2D map spaced along a global scale?
 	        // -> a single region map? no, too blobby use a two level approach instead
@@ -1234,10 +1243,10 @@ public class SpectralShapeEmbedding {
 	        //float[] dist = new float[dim*dim];
 	        for (int xyz=0;xyz<nxyz;xyz++) if (labelImage[xyz]==lbl[n]) {
 	            // find the correct bin
-	            //int binY = Numerics.floor((coordImage[xyz+Y*nxyz]-minY)/dY);
-	            //int binZ = Numerics.floor((coordImage[xyz+Z*nxyz]-minZ)/dZ);
-	            int binY = Numerics.floor((coordImage[xyz+Y*nxyz]-minY)/d0);
-	            int binZ = Numerics.floor((coordImage[xyz+Z*nxyz]-minZ)/d0);
+	            int binY = Numerics.floor((coordImage[xyz+Y*nxyz]-minY)/dY);
+	            int binZ = Numerics.floor((coordImage[xyz+Z*nxyz]-minZ)/dZ);
+	            //int binY = Numerics.floor((coordImage[xyz+Y*nxyz]-minY)/d0);
+	            //int binZ = Numerics.floor((coordImage[xyz+Z*nxyz]-minZ)/d0);
 	            
 	            binY = Numerics.bounded(binY,0,dim-1);
 	            binZ = Numerics.bounded(binZ,0,dim-1);
