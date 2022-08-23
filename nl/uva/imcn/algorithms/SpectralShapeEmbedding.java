@@ -101,7 +101,7 @@ public class SpectralShapeEmbedding {
 	    lbl = ObjectLabeling.listOrderedLabels(labelImage, nx, ny, nz);
 	    System.out.println("labels: "+nlb);
 		
-	    spaceDev *= spaceDev;
+	    //spaceDev *= spaceDev;
 	    if (nc>0) {
 	        for (int c=0;c<nc;c++) {
 	            contrastDev[c] *= contrastDev[c];
@@ -235,13 +235,27 @@ public class SpectralShapeEmbedding {
                         diff /= nc;
                         matrix[v1][v2] = 1.0/(0.1+diff);
                         */
+                        /*
+                        // interesting, but not super-useful
                         double avg=0.0;
                         for (int c=0;c<nc;c++) {
                             avg += (contrasts[c][v1]+contrasts[c][v2])/contrastDev[c];
                         }
                         avg /= 2.0*nc;
                         matrix[v1][v2] = 1.0/Numerics.max(0.1,avg);
-                         
+                        */
+                        boolean boundary = false;
+                        boolean zero = false;
+                        for (int c=0;c<nc;c++) {
+                            double diff = (contrasts[c][v1]-contrasts[c][v2])
+                                         *(contrasts[c][v1]-contrasts[c][v2])/contrastDev[c];
+                            if (diff>1) boundary=true;
+                            if (contrasts[c][v1]==0 || contrasts[c][v2]==0) zero=true;
+                        }                        
+                        if (boundary) matrix[v1][v2] *= 1.0/spaceDev;
+                        else if (zero) matrix[v1][v2] *= 1.0;
+                        else matrix[v1][v2] *= spaceDev;
+                        
                     }
                 }
                 matrix[v2][v1] = matrix[v1][v2];
@@ -418,12 +432,25 @@ public class SpectralShapeEmbedding {
                             diff /= nc;
                             coeff = 1.0/(0.1+diff);
                             */
+                            /*
                             double avg=0.0;
                             for (int c=0;c<nc;c++) {
                                 avg += (contrasts[c][v1]+contrasts[c][v2])/contrastDev[c];
                             }
                             avg /= 2.0*nc;
                             coeff = 1.0/Numerics.max(0.1,avg);
+                            */
+                            boolean boundary = false;
+                            boolean zero = false;
+                            for (int c=0;c<nc;c++) {
+                                double diff = (contrasts[c][v1]-contrasts[c][v2])
+                                             *(contrasts[c][v1]-contrasts[c][v2])/contrastDev[c];
+                                if (diff>1) boundary=true;
+                                if (contrasts[c][v1]==0 || contrasts[c][v2]==0) zero=true;
+                            }                        
+                            if (boundary) coeff *= 1.0/spaceDev;
+                            else if (zero) coeff *= 1.0;
+                            else coeff *= spaceDev;
                         }
                         mtxval[id] = coeff;
                         mtxid1[id] = v1;
