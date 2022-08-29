@@ -26,25 +26,26 @@ public class SpectralShapeEmbedding {
 	private int nx, ny, nz, nxyz;
 	private float rx, ry, rz;
 
-	private String systemParam = "single";
-	private static final String[] systemTypes = {"single","joint"}; 
+	private String bgParam = "single";
+	private static final String[] bgTypes = {"boundary","object","neutral"}; 
 	private float spaceDev = 10.0f;
 	private boolean sparse=true;
 	private int msize = 800;
 	private static final String[] refAxTypes = {"none","X","Y","Z"};
 	private String refAxis = "none";
 	private boolean eigenGame = true;
-	private double alpha = 1e-2;
+	private double step = 1e-2;
 	private double error = 1e-2;
+	private double alpha = 0.0;
 	
 	private float[] coordImage;
 	private float[] flatmapImage;
 	
 	// numerical quantities
-	private static final	float	INVSQRT2 = (float)(1.0/FastMath.sqrt(2.0));
-	private static final	float	INVSQRT3 = (float)(1.0/FastMath.sqrt(3.0));
-	private static final	float	SQRT2 = (float)FastMath.sqrt(2.0);
-	private static final	float	SQRT3 = (float)FastMath.sqrt(3.0);
+	private static final	double	INVSQRT2 = 1.0/FastMath.sqrt(2.0);
+	private static final	double	INVSQRT3 = 1.0/FastMath.sqrt(3.0);
+	private static final	double	SQRT2 = FastMath.sqrt(2.0);
+	private static final	double	SQRT3 = FastMath.sqrt(3.0);
 
 	// direction labeling		
 	public	static	byte	X = 0;
@@ -63,7 +64,7 @@ public class SpectralShapeEmbedding {
 	public final void setCoordinateImage(float[] val) { coordImage = val; }
 	
 	public final void setSpatialDev(float val) { spaceDev = val; }
-	public final void setSystemType(String val) { systemParam = val; }
+	public final void setBackgroundType(String val) { bgParam = val; }
 	
 	public final void setContrastNumber(int val) { 
 	    nc = val;
@@ -76,7 +77,9 @@ public class SpectralShapeEmbedding {
 	
 	public final void setReferenceAxis(String val) { refAxis = val; }
 	
-	public final void setEigenGame(boolean val, double a, double e) { eigenGame=val; alpha=a; error=e; }
+	public final void setExponentAlpha(double val) { alpha=val; }
+	
+	public final void setEigenGame(boolean val, double s, double e) { eigenGame=val; step=s; error=e; }
 	
 	public final void setDimensions(int x, int y, int z) { nx=x; ny=y; nz=z; nxyz=nx*ny*nz; }
 	public final void setDimensions(int[] dim) { nx=dim[0]; ny=dim[1]; nz=dim[2]; nxyz=nx*ny*nz; }
@@ -101,7 +104,7 @@ public class SpectralShapeEmbedding {
 	    lbl = ObjectLabeling.listOrderedLabels(labelImage, nx, ny, nz);
 	    System.out.println("labels: "+nlb);
 		
-	    spaceDev *= spaceDev;
+	    //spaceDev *= spaceDev;
 	    if (nc>0) {
 	        for (int c=0;c<nc;c++) {
 	            contrastDev[c] *= contrastDev[c];
@@ -110,6 +113,10 @@ public class SpectralShapeEmbedding {
 	    
 	    coordImage = new float[4*nxyz];
             
+	    int bgType=0;
+	    if (bgParam.equals("object")) bgType = 1;
+	    else if (bgParam.equals("boundary")) bgType = -1;
+	    
 	    for (int n=0;n<nlb;n++) if (n>0) {
 	        // compute embeddings independetly for each structure
 	        int lb = lbl[n];
@@ -235,13 +242,30 @@ public class SpectralShapeEmbedding {
                         diff /= nc;
                         matrix[v1][v2] = 1.0/(0.1+diff);
                         */
+                        /*
+                        // interesting, but not super-useful
                         double avg=0.0;
                         for (int c=0;c<nc;c++) {
                             avg += (contrasts[c][v1]+contrasts[c][v2])/contrastDev[c];
                         }
                         avg /= 2.0*nc;
                         matrix[v1][v2] = 1.0/Numerics.max(0.01,avg);
-                         
+                        */
+                        boolean boundary = false;
+                        boolean zero = false;
+                        for (int c=0;c<nc;c++) {
+                            double diff = (contrasts[c][v1]-contrasts[c][v2])
+                                         *(contrasts[c][v1]-contrasts[c][v2])/contrastDev[c];
+                            if (diff>=1) boundary=true;
+                            if (contrasts[c][v1]==0 || contrasts[c][v2]==0) zero=true;
+                        }                        
+                        if (boundary) matrix[v1][v2] *= 1.0/spaceDev;
+                        // treat background as special or not? set as an option...
+                        else if (zero) {
+                            if (bgType==0) matrix[v1][v2] *= 1.0;
+                            else if (bgType<0) matrix[v1][v2] *= 1.0/spaceDev;
+                        }
+                        else matrix[v1][v2] *= spaceDev;
                     }
                 }
                 matrix[v2][v1] = matrix[v1][v2];
@@ -249,6 +273,21 @@ public class SpectralShapeEmbedding {
             System.out.println("..correlations");
             
             // build Laplacian
+            if (alpha>0) {
+                double[] norm = new double[vol];
+                for (int v1=0;v1<vol;v1++) {
+                    norm[v1] = 0.0;
+                    for (int v2=0;v2<vol;v2++) {
+                        norm[v1] += matrix[v1][v2];
+                    }
+                    norm[v1] = FastMath.pow(norm[v1],-alpha);
+                }
+                for (int v1=0;v1<vol;v1++) for (int v2=v1+1;v2<vol;v2++) {
+                    matrix[v1][v2] *= norm[v1]*norm[v2];
+                    matrix[v2][v1] *= norm[v2]*norm[v1];
+                }
+            }
+            
             double[] degree = new double[vol];
             for (int v1=0;v1<vol;v1++) {
                 degree[v1] = 0.0;
@@ -346,6 +385,7 @@ public class SpectralShapeEmbedding {
                 
                 // build coordinate and contrast arrays
                 coord = new float[3][vol];
+                int[] index = new int[nxyz];
                 contrasts = null;
                 if (nc>0) contrasts = new float[nc][vol];
                 v=0;
@@ -361,12 +401,34 @@ public class SpectralShapeEmbedding {
                             }
                         }
                         v++;
+                        index[xyz] = v;
                     }
                 }       
                 System.out.println("..contrasts");
                         
                 // build correlation matrix
                 int nmtx = 0;
+                
+                // note: we go with sparse representations always, too slow otherwise
+                for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
+                    int xyz = x+nx*y+nx*ny*z;
+                    if (labelImage[xyz]==lb) {
+                        for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) for (int dz=-1;dz<=1;dz++) {
+                            // 6-connectivity?
+                            //if (dx*dx+dy*dy+dz*dz==1) {
+                            // 26-connectivity?
+                            if (dx*dx+dy*dy+dz*dz>0) {
+                                int ngb = xyz+dx+nx*dy+nx*ny*dz;
+                                if (labelImage[ngb]==lb) {
+                                    int v1 = index[xyz]-1;
+                                    int v2 = index[ngb]-1;
+                                    if (v1<v2) nmtx++;
+                                }
+                            }
+                        }
+                    }
+                }
+                /*
                 for (int v1=0;v1<vol;v1++) for (int v2=v1+1;v2<vol;v2++) {
                     double dist = (coord[X][v1]-coord[X][v2])*(coord[X][v1]-coord[X][v2])
                                  +(coord[Y][v1]-coord[Y][v2])*(coord[Y][v1]-coord[Y][v2])
@@ -376,6 +438,7 @@ public class SpectralShapeEmbedding {
                         nmtx++;
                     }
                 }
+                */
                 System.out.println("non-zero components: "+nmtx);
                 
                 double[] mtxval = new double[nmtx];
@@ -384,59 +447,98 @@ public class SpectralShapeEmbedding {
                 int[][] mtxinv = new int[6][vol];
                 
                 int id=0;
+                /*
                 for (int v1=0;v1<vol;v1++) for (int v2=v1+1;v2<vol;v2++) {
                     double dist = (coord[X][v1]-coord[X][v2])*(coord[X][v1]-coord[X][v2])
                                  +(coord[Y][v1]-coord[Y][v2])*(coord[Y][v1]-coord[Y][v2])
                                  +(coord[Z][v1]-coord[Z][v2])*(coord[Z][v1]-coord[Z][v2]);
                     // when computing a sparse version, only keep strict 6-C neighbors             
                     if (sparse && dist<=1.0) {
-                        double coeff = 1.0/FastMath.sqrt(dist);
-                        if (nc>0) {
-                            /*
-                            double diff = 0.0;
-                            for (int c=0;c<nc;c++) {
-                                diff += (contrasts[c][v1]-contrasts[c][v2])
-                                       *(contrasts[c][v1]-contrasts[c][v2])/contrastDev[c];
+                    */
+                for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
+                    int xyz = x+nx*y+nx*ny*z;
+                    if (labelImage[xyz]==lb) {
+                        for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) for (int dz=-1;dz<=1;dz++) {
+                            // 6-connectivity?
+                            //if (dx*dx+dy*dy+dz*dz==1) {
+                            // 26-connectivity?
+                            double dist = dx*dx+dy*dy+dz*dz;
+                            if (dist>0) {
+                                int ngb = xyz+dx+nx*dy+nx*ny*dz;
+                                if (labelImage[ngb]==lb) {
+                                    int v1 = index[xyz]-1;
+                                    int v2 = index[ngb]-1;
+                                    if (v1<v2) {
+                                        double coeff = 1.0;
+                                        if (dist==2.0) coeff = INVSQRT2;
+                                        else if (dist==3) coeff = INVSQRT3;
+                                        if (nc>0) {
+                                            /*
+                                            double diff = 0.0;
+                                            for (int c=0;c<nc;c++) {
+                                                diff += (contrasts[c][v1]-contrasts[c][v2])
+                                                       *(contrasts[c][v1]-contrasts[c][v2])/contrastDev[c];
+                                            }
+                                            coeff *= FastMath.exp(-0.5*diff);
+                                            */
+                                            /*
+                                            boolean boundary = false;
+                                            for (int c=0;c<nc;c++) {
+                                                double diff = (contrasts[c][v1]-contrasts[c][v2])
+                                                       *(contrasts[c][v1]-contrasts[c][v2])/contrastDev[c];
+                                                if (diff>1) boundary=true;
+                                            }
+                                            if (boundary) coeff *= 0.5;
+                                            */
+                                            /*
+                                            double diff = 0.0;
+                                            for (int c=0;c<nc;c++) {
+                                                diff += (contrasts[c][v1]-contrasts[c][v2])
+                                                       *(contrasts[c][v1]-contrasts[c][v2])/contrastDev[c];
+                                            }
+                                            diff /= nc;
+                                            coeff = 1.0/(0.1+diff);
+                                            */
+                                            /*
+                                            double avg=0.0;
+                                            for (int c=0;c<nc;c++) {
+                                                avg += (contrasts[c][v1]+contrasts[c][v2])/contrastDev[c];
+                                            }
+                                            avg /= 2.0*nc;
+                                            coeff = 1.0/Numerics.max(0.1,avg);
+                                            */
+                                            boolean boundary = false;
+                                            boolean zero = false;
+                                            for (int c=0;c<nc;c++) {
+                                                double diff = (contrasts[c][v1]-contrasts[c][v2])
+                                                             *(contrasts[c][v1]-contrasts[c][v2])/contrastDev[c];
+                                                if (diff>=1) boundary=true;
+                                                if (contrasts[c][v1]==0 || contrasts[c][v2]==0) zero=true;
+                                            }                        
+                                            if (boundary) coeff *= 1.0/spaceDev;
+                                            // treat background as special or not?
+                                            else if (zero) {
+                                                if (bgType==0) coeff *= 1.0;
+                                                else if (bgType<0) coeff *= 1.0/spaceDev;
+                                            }
+                                            else coeff *= spaceDev;
+                                        }
+                                        mtxval[id] = coeff;
+                                        mtxid1[id] = v1;
+                                        mtxid2[id] = v2; 
+                                        for (int c=0;c<6;c++) if (mtxinv[c][v1]==0) {
+                                            mtxinv[c][v1] = id+1;
+                                            c=6;
+                                        }
+                                        for (int c=0;c<6;c++) if (mtxinv[c][v2]==0) {
+                                            mtxinv[c][v2] = id+1;
+                                            c=6;
+                                        }
+                                        id++;
+                                    }
+                                }
                             }
-                            coeff *= FastMath.exp(-0.5*diff);
-                            */
-                            /*
-                            boolean boundary = false;
-                            for (int c=0;c<nc;c++) {
-                                double diff = (contrasts[c][v1]-contrasts[c][v2])
-                                       *(contrasts[c][v1]-contrasts[c][v2])/contrastDev[c];
-                                if (diff>1) boundary=true;
-                            }
-                            if (boundary) coeff *= 0.5;
-                            */
-                            /*
-                            double diff = 0.0;
-                            for (int c=0;c<nc;c++) {
-                                diff += (contrasts[c][v1]-contrasts[c][v2])
-                                       *(contrasts[c][v1]-contrasts[c][v2])/contrastDev[c];
-                            }
-                            diff /= nc;
-                            coeff = 1.0/(0.1+diff);
-                            */
-                            double avg=0.0;
-                            for (int c=0;c<nc;c++) {
-                                avg += (contrasts[c][v1]+contrasts[c][v2])/contrastDev[c];
-                            }
-                            avg /= 2.0*nc;
-                            coeff = 1.0/Numerics.max(0.01,avg);
                         }
-                        mtxval[id] = coeff;
-                        mtxid1[id] = v1;
-                        mtxid2[id] = v2; 
-                        for (int c=0;c<6;c++) if (mtxinv[c][v1]==0) {
-                            mtxinv[c][v1] = id+1;
-                            c=6;
-                        }
-                        for (int c=0;c<6;c++) if (mtxinv[c][v2]==0) {
-                            mtxinv[c][v2] = id+1;
-                            c=6;
-                        }
-                        id++;
                     }
                 }
                 coord = null;
@@ -446,6 +548,7 @@ public class SpectralShapeEmbedding {
                 
                 // get initial vector guesses from subsampled data
                 double[][] init = new double[4][vol];
+                double[] norm = new double[4];
                 v=0;
                 for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
                     int xyz = x+nx*y+nx*ny*z;
@@ -454,11 +557,23 @@ public class SpectralShapeEmbedding {
                         init[1][v] = coordImage[xyz+Y*nxyz];
                         init[2][v] = coordImage[xyz+Z*nxyz];
                         init[3][v] = coordImage[xyz+T*nxyz];
+                        
+                        norm[0] += init[0][v]*init[0][v];
+                        norm[1] += init[1][v]*init[1][v];
+                        norm[2] += init[2][v]*init[2][v];
+                        norm[3] += init[3][v]*init[3][v];
                         v++;
                     }
                 }
+                // rescale to ||V||=1
+                for (int i=0;i<4;i++) {
+                    norm[i] = FastMath.sqrt(norm[i]);
+                    for (int vi=0;vi<vol;vi++) {
+                        init[i][vi] /= norm[i];
+                    }
+                }
                 
-                runSparseLaplacianEigenGame(mtxval, mtxid1, mtxid2, mtxinv, nmtx, vol, 4, init, alpha, error);
+                runSparseLaplacianEigenGame(mtxval, mtxid1, mtxid2, mtxinv, nmtx, vol, 4, init, step, error);
                               
                 v=0;
                 for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
@@ -892,9 +1007,9 @@ public class SpectralShapeEmbedding {
                     }
                 }
                 
-                //runSparseLaplacianEigenGame(mtxval, mtxid1, mtxid2, mtxinv, nmtx, vol, 4, init, alpha, error*FastMath.sqrt(vol/vol0));
-                runSparseLaplacianEigenGame(mtxval, mtxid1, mtxid2, mtxinv, nmtx, vol, 4, init, alpha*FastMath.pow(vol/vol0,0.25), error*FastMath.pow(vol/vol0,0.25));
-                //runSparseLaplacianEigenGame(mtxval, mtxid1, mtxid2, mtxinv, nmtx, vol, 4, init, alpha, error);
+                //runSparseLaplacianEigenGame(mtxval, mtxid1, mtxid2, mtxinv, nmtx, vol, 4, init, step, error*FastMath.sqrt(vol/vol0));
+                runSparseLaplacianEigenGame(mtxval, mtxid1, mtxid2, mtxinv, nmtx, vol, 4, init, step*FastMath.pow(vol/vol0,0.25), error*FastMath.pow(vol/vol0,0.25));
+                //runSparseLaplacianEigenGame(mtxval, mtxid1, mtxid2, mtxinv, nmtx, vol, 4, init, step, error);
 
                 // update the error parameter to reduce the number of steps? no keep to baseline
                 // because the error is not updated
@@ -999,9 +1114,9 @@ public class SpectralShapeEmbedding {
 		return;
 	}
 
-    private final void runSparseLaplacianEigenGame(double[] mtval, int[] mtid1, int[] mtid2, int[][] mtinv, int nn0, int nm, int nv, double[][] init, double alpha, double error) {
+    private final void runSparseLaplacianEigenGame(double[] mtval, int[] mtid1, int[] mtid2, int[][] mtinv, int nn0, int nm, int nv, double[][] init, double step, double error) {
         //double 		error = 1e-2;	// error tolerance
-        //double      alpha = 1e-3;    // step size
+        //double      step = 1e-3;    // step size
         int iter;
         double[][] Mv = new double[nv][nm];
         double[] vMv = new double[nv];
@@ -1010,6 +1125,21 @@ public class SpectralShapeEmbedding {
         
         // here assume the matrix is the upper diagonal of correlation matrix
         
+        // correction for different norms
+        if (alpha>0) {
+            double[] norm = new double[nm];
+            for (int n=0;n<nn0;n++) {
+                norm[mtid1[n]] += mtval[n];
+                norm[mtid2[n]] += mtval[n];
+            }
+            for (int n=0;n<nm;n++) {
+                norm[n] = FastMath.pow(norm[n],-alpha);
+            }
+            for (int n=0;n<nn0;n++) {
+                mtval[n] *= norm[mtid1[n]]*norm[mtid2[n]];
+            }
+        }           
+
         // build degree first
         double[] deg = new double[nm];
         // M_ii = 0
@@ -1096,7 +1226,7 @@ public class SpectralShapeEmbedding {
                 // update
                 norm = 0.0;
                 for (int n=0;n<nm;n++) {
-                    vect[vi][n] += alpha*(grad[n] - gradR*vect[vi][n]);
+                    vect[vi][n] += step*(grad[n] - gradR*vect[vi][n]);
                     norm += vect[vi][n]*vect[vi][n];
                 }
                 norm = FastMath.sqrt(norm);
