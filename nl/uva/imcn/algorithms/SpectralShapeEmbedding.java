@@ -42,6 +42,7 @@ public class SpectralShapeEmbedding {
 	private float[] flatmapImage;
 	
 	// numerical quantities
+	private static final    int     nconnect=26;
 	private static final	double	INVSQRT2 = 1.0/FastMath.sqrt(2.0);
 	private static final	double	INVSQRT3 = 1.0/FastMath.sqrt(3.0);
 	private static final	double	SQRT2 = FastMath.sqrt(2.0);
@@ -417,7 +418,7 @@ public class SpectralShapeEmbedding {
                             // 6-connectivity?
                             //if (dx*dx+dy*dy+dz*dz==1) {
                             // 26-connectivity?
-                            if (dx*dx+dy*dy+dz*dz>0) {
+                            if (dx*dx+dy*dy+dz*dz>0.5) {
                                 int ngb = xyz+dx+nx*dy+nx*ny*dz;
                                 if (labelImage[ngb]==lb) {
                                     int v1 = index[xyz]-1;
@@ -444,7 +445,7 @@ public class SpectralShapeEmbedding {
                 double[] mtxval = new double[nmtx];
                 int[] mtxid1 = new int[nmtx];
                 int[] mtxid2 = new int[nmtx];
-                int[][] mtxinv = new int[6][vol];
+                int[][] mtxinv = new int[nconnect][vol];
                 
                 int id=0;
                 /*
@@ -463,15 +464,15 @@ public class SpectralShapeEmbedding {
                             //if (dx*dx+dy*dy+dz*dz==1) {
                             // 26-connectivity?
                             double dist = dx*dx+dy*dy+dz*dz;
-                            if (dist>0) {
+                            if (dist>0.5) {
                                 int ngb = xyz+dx+nx*dy+nx*ny*dz;
                                 if (labelImage[ngb]==lb) {
                                     int v1 = index[xyz]-1;
                                     int v2 = index[ngb]-1;
                                     if (v1<v2) {
                                         double coeff = 1.0;
-                                        if (dist==2.0) coeff = INVSQRT2;
-                                        else if (dist==3) coeff = INVSQRT3;
+                                        if (dist>2.5) coeff = INVSQRT3;
+                                        else if (dist>1.5) coeff = INVSQRT2;
                                         if (nc>0) {
                                             /*
                                             double diff = 0.0;
@@ -526,13 +527,13 @@ public class SpectralShapeEmbedding {
                                         mtxval[id] = coeff;
                                         mtxid1[id] = v1;
                                         mtxid2[id] = v2; 
-                                        for (int c=0;c<6;c++) if (mtxinv[c][v1]==0) {
+                                        for (int c=0;c<nconnect;c++) if (mtxinv[c][v1]==0) {
                                             mtxinv[c][v1] = id+1;
-                                            c=6;
+                                            c=nconnect;
                                         }
-                                        for (int c=0;c<6;c++) if (mtxinv[c][v2]==0) {
+                                        for (int c=0;c<nconnect;c++) if (mtxinv[c][v2]==0) {
                                             mtxinv[c][v2] = id+1;
-                                            c=6;
+                                            c=nconnect;
                                         }
                                         id++;
                                     }
@@ -943,7 +944,7 @@ public class SpectralShapeEmbedding {
                 double[] mtxval = new double[nmtx];
                 int[] mtxid1 = new int[nmtx];
                 int[] mtxid2 = new int[nmtx];
-                int[][] mtxinv = new int[6][vol];
+                int[][] mtxinv = new int[nconnect][vol];
                 
                 int id=0;
                 for (int v1=0;v1<vol;v1++) for (int v2=v1+1;v2<vol;v2++) {
@@ -964,13 +965,13 @@ public class SpectralShapeEmbedding {
                         mtxval[id] = coeff;
                         mtxid1[id] = v1;
                         mtxid2[id] = v2; 
-                        for (int c=0;c<6;c++) if (mtxinv[c][v1]==0) {
+                        for (int c=0;c<nconnect;c++) if (mtxinv[c][v1]==0) {
                             mtxinv[c][v1] = id+1;
-                            c=6;
+                            c=nconnect;
                         }
-                        for (int c=0;c<6;c++) if (mtxinv[c][v2]==0) {
+                        for (int c=0;c<nconnect;c++) if (mtxinv[c][v2]==0) {
                             mtxinv[c][v2] = id+1;
-                            c=6;
+                            c=nconnect;
                         }
                         id++;
                     }
@@ -1165,7 +1166,7 @@ public class SpectralShapeEmbedding {
                 // diagonal term is 2-1, as lambda_0<=2 (graph Laplacian property)
                 Mv[vi][n] = vect[vi][n];
                 // off-diagonals
-                for (int c=0;c<6;c++) if (mtinv[c][n]>0) {
+                for (int c=0;c<nconnect;c++) if (mtinv[c][n]>0) {
                     if (mtid1[mtinv[c][n]-1]==n) {
                         // v1<v2
                         Mv[vi][n] += mtval[mtinv[c][n]-1]/deg[n]*vect[vi][mtid2[mtinv[c][n]-1]];
@@ -1246,7 +1247,7 @@ public class SpectralShapeEmbedding {
                     // diagonal term is 2-1
                     Mv[vi][n] = vect[vi][n];
                     // off-diagonals
-                    for (int c=0;c<6;c++) if (mtinv[c][n]>0) {
+                    for (int c=0;c<nconnect;c++) if (mtinv[c][n]>0) {
                         if (mtid1[mtinv[c][n]-1]==n) {
                             // v1<v2
                             Mv[vi][n] += mtval[mtinv[c][n]-1]/deg[n]*vect[vi][mtid2[mtinv[c][n]-1]];
