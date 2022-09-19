@@ -42,7 +42,7 @@ public class SpectralShapeEmbedding {
 	private float[] flatmapImage;
 	
 	// numerical quantities
-	private static final    int     nconnect=26;
+	private static final    int     nconnect=6;
 	private static final	double	INVSQRT2 = 1.0/FastMath.sqrt(2.0);
 	private static final	double	INVSQRT3 = 1.0/FastMath.sqrt(3.0);
 	private static final	double	SQRT2 = FastMath.sqrt(2.0);
@@ -461,18 +461,18 @@ public class SpectralShapeEmbedding {
                     if (labelImage[xyz]==lb) {
                         for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) for (int dz=-1;dz<=1;dz++) {
                             // 6-connectivity?
-                            //if (dx*dx+dy*dy+dz*dz==1) {
+                            if (dx*dx+dy*dy+dz*dz==1) {
                             // 26-connectivity?
-                            double dist = dx*dx+dy*dy+dz*dz;
-                            if (dist>0.5) {
+                            //double dist = dx*dx+dy*dy+dz*dz;
+                            //if (dist>0.5) {
                                 int ngb = xyz+dx+nx*dy+nx*ny*dz;
                                 if (labelImage[ngb]==lb) {
                                     int v1 = index[xyz]-1;
                                     int v2 = index[ngb]-1;
                                     if (v1<v2) {
                                         double coeff = 1.0;
-                                        if (dist>2.5) coeff = INVSQRT3;
-                                        else if (dist>1.5) coeff = INVSQRT2;
+                                        //if (dist>2.5) coeff = INVSQRT3;
+                                        //else if (dist>1.5) coeff = INVSQRT2;
                                         if (nc>0) {
                                             /*
                                             double diff = 0.0;
