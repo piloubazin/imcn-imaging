@@ -38,6 +38,12 @@ public class SpectralShapeEmbedding {
 	private double error = 1e-2;
 	private double alpha = 0.0;
 	
+	private boolean tsne = false;
+	private double delta = 100.0;
+	private double momentum = 0.5;
+	private double relaxation = 0.5;
+	private int iterations=1000;
+	
 	private float[] coordImage;
 	private float[] flatmapImage;
 	
@@ -81,6 +87,8 @@ public class SpectralShapeEmbedding {
 	public final void setExponentAlpha(double val) { alpha=val; }
 	
 	public final void setEigenGame(boolean val, double s, double e) { eigenGame=val; step=s; error=e; }
+	
+	public final void setTSNE(boolean val, double d, double m, double r, int i) { tsne=val; delta=d; momentum=m; relaxation=r; iterations=i; }
 	
 	public final void setDimensions(int x, int y, int z) { nx=x; ny=y; nz=z; nxyz=nx*ny*nz; }
 	public final void setDimensions(int[] dim) { nx=dim[0]; ny=dim[1]; nz=dim[2]; nxyz=nx*ny*nz; }
@@ -1115,7 +1123,195 @@ public class SpectralShapeEmbedding {
 		return;
 	}
 
-    private final void runSparseLaplacianEigenGame(double[] mtval, int[] mtid1, int[] mtid2, int[][] mtinv, int nn0, int nm, int nv, double[][] init, double step, double error) {
+    public final void singleShapeEmbeddingOverlapMinimization() { 
+	    
+	    // 1. build label list
+	    nlb = ObjectLabeling.countLabels(labelImage, nx, ny, nz);
+	    lbl = ObjectLabeling.listOrderedLabels(labelImage, nx, ny, nz);
+	    System.out.println("labels: "+nlb);
+		
+	    //spaceDev *= spaceDev;
+	    if (nc>0) {
+	        for (int c=0;c<nc;c++) {
+	            contrastDev[c] *= contrastDev[c];
+	        }
+	    }
+	    
+	    // here we assume coordImage is given (from previous step)
+	    //coordImage = new float[4*nxyz];
+            
+	    int bgType=0;
+	    if (bgParam.equals("object")) bgType = 1;
+	    else if (bgParam.equals("boundary")) bgType = -1;
+	    
+	    for (int n=0;n<nlb;n++) if (n>0) {
+	        // compute embeddings independetly for each structure
+	        int lb = lbl[n];
+	        System.out.println("process label "+lb);
+	        
+	        int vol=0;
+	        for (int xyz=0;xyz<nxyz;xyz++) if (labelImage[xyz]==lb) vol++;
+	        System.out.println("base volume: "+vol);
+                        
+            // build coordinate and contrast arrays
+            float[][] coord = new float[3][vol];
+            int[] index = new int[nxyz];
+            float[][] contrasts = null;
+            if (nc>0) contrasts = new float[nc][vol];
+            int v=0;
+            for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+                int xyz = x+nx*y+nx*ny*z;
+                if (labelImage[xyz]==lb) {
+                    coord[X][v] = x;
+                    coord[Y][v] = y;
+                    coord[Z][v] = z;
+                    if (nc>0) {
+                        for (int c=0;c<nc;c++) {
+                            contrasts[c][v] = contrastImages[c][xyz];
+                        }
+                    }
+                    v++;
+                    index[xyz] = v;
+                }
+            }       
+            System.out.println("..contrasts");
+                    
+            // build correlation matrix
+            int nmtx = 0;
+            
+            // note: we go with sparse representations always, too slow otherwise
+            for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
+                int xyz = x+nx*y+nx*ny*z;
+                if (labelImage[xyz]==lb) {
+                    for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) for (int dz=-1;dz<=1;dz++) {
+                        // 6-connectivity?
+                        //if (dx*dx+dy*dy+dz*dz==1) {
+                        // 26-connectivity?
+                        if (dx*dx+dy*dy+dz*dz>0.5) {
+                            int ngb = xyz+dx+nx*dy+nx*ny*dz;
+                            if (labelImage[ngb]==lb) {
+                                int v1 = index[xyz]-1;
+                                int v2 = index[ngb]-1;
+                                if (v1<v2) nmtx++;
+                            }
+                        }
+                    }
+                }
+            }
+            /*
+            for (int v1=0;v1<vol;v1++) for (int v2=v1+1;v2<vol;v2++) {
+                double dist = (coord[X][v1]-coord[X][v2])*(coord[X][v1]-coord[X][v2])
+                             +(coord[Y][v1]-coord[Y][v2])*(coord[Y][v1]-coord[Y][v2])
+                             +(coord[Z][v1]-coord[Z][v2])*(coord[Z][v1]-coord[Z][v2]);
+                // when computing a sparse version, only keep strict 6-C neighbors             
+                if (sparse && dist<=1.0) {
+                    nmtx++;
+                }
+            }
+            */
+            System.out.println("non-zero components: "+nmtx);
+            
+            double[] mtxval = new double[nmtx];
+            int[] mtxid1 = new int[nmtx];
+            int[] mtxid2 = new int[nmtx];
+            int[][] mtxinv = new int[nconnect][vol];
+            
+            int id=0;
+            /*
+            for (int v1=0;v1<vol;v1++) for (int v2=v1+1;v2<vol;v2++) {
+                double dist = (coord[X][v1]-coord[X][v2])*(coord[X][v1]-coord[X][v2])
+                             +(coord[Y][v1]-coord[Y][v2])*(coord[Y][v1]-coord[Y][v2])
+                             +(coord[Z][v1]-coord[Z][v2])*(coord[Z][v1]-coord[Z][v2]);
+                // when computing a sparse version, only keep strict 6-C neighbors             
+                if (sparse && dist<=1.0) {
+                */
+            for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
+                int xyz = x+nx*y+nx*ny*z;
+                if (labelImage[xyz]==lb) {
+                    for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) for (int dz=-1;dz<=1;dz++) {
+                        // 6-connectivity?
+                        if (dx*dx+dy*dy+dz*dz==1) {
+                        // 26-connectivity?
+                        //double dist = dx*dx+dy*dy+dz*dz;
+                        //if (dist>0.5) {
+                            int ngb = xyz+dx+nx*dy+nx*ny*dz;
+                            if (labelImage[ngb]==lb) {
+                                int v1 = index[xyz]-1;
+                                int v2 = index[ngb]-1;
+                                if (v1<v2) {
+                                    double coeff = 1.0;
+                                    //if (dist>2.5) coeff = INVSQRT3;
+                                    //else if (dist>1.5) coeff = INVSQRT2;
+                                    if (nc>0) {
+                                        boolean boundary = false;
+                                        boolean zero = false;
+                                        for (int c=0;c<nc;c++) {
+                                            double diff = (contrasts[c][v1]-contrasts[c][v2])
+                                                         *(contrasts[c][v1]-contrasts[c][v2])/contrastDev[c];
+                                            if (diff>=1) boundary=true;
+                                            if (contrasts[c][v1]==0 || contrasts[c][v2]==0) zero=true;
+                                        }                        
+                                        if (boundary) coeff *= 1.0/spaceDev;
+                                        // treat background as special or not?
+                                        else if (zero) {
+                                            if (bgType==0) coeff *= 1.0;
+                                            else if (bgType<0) coeff *= 1.0/spaceDev;
+                                        }
+                                        else coeff *= spaceDev;
+                                    }
+                                    mtxval[id] = coeff;
+                                    mtxid1[id] = v1;
+                                    mtxid2[id] = v2; 
+                                    for (int c=0;c<nconnect;c++) if (mtxinv[c][v1]==0) {
+                                        mtxinv[c][v1] = id+1;
+                                        c=nconnect;
+                                    }
+                                    for (int c=0;c<nconnect;c++) if (mtxinv[c][v2]==0) {
+                                        mtxinv[c][v2] = id+1;
+                                        c=nconnect;
+                                    }
+                                    id++;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            coord = null;
+            contrasts = null;
+            
+            System.out.println("..correlations");
+                
+            // get initial vector guesses from previous data
+            double[][] init = new double[2][vol];
+            v=0;
+            for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+                int xyz = x+nx*y+nx*ny*z;
+                if (labelImage[xyz]==lb) {
+                    init[X][v] = coordImage[xyz+Y*nxyz];
+                    init[Y][v] = coordImage[xyz+Z*nxyz];
+                    v++;
+                }
+            }
+            
+            // run the iterative KL divergence minimization here
+            runStickyTSNE(mtxval, mtxid1, mtxid2, mtxinv, nmtx, vol, 2, init, delta, momentum, relaxation, iterations);
+            
+            v=0;
+            for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+                int xyz = x+nx*y+nx*ny*z;
+                if (labelImage[xyz]==lb) {
+                    coordImage[xyz+X*nxyz] = (float)init[X][v];
+                    coordImage[xyz+Y*nxyz] = (float)init[Y][v];
+                    v++;
+                }
+            }
+        }
+                
+		return;
+	}
+
+	private final void runSparseLaplacianEigenGame(double[] mtval, int[] mtid1, int[] mtid2, int[][] mtinv, int nn0, int nm, int nv, double[][] init, double step, double error) {
         //double 		error = 1e-2;	// error tolerance
         //double      step = 1e-3;    // step size
         int iter;
@@ -1299,6 +1495,69 @@ public class SpectralShapeEmbedding {
                 prod += vect[v1][m]*Mv[v1][m];
             }
             System.out.println("v"+v1+" . Mv"+v1+" = "+prod/FastMath.sqrt(normvect*normMv)+" (lambda = "+normMv/normvect+")");
+        }
+    }
+
+	private final void runStickyTSNE(double[] mtval, int[] mtid1, int[] mtid2, int[][] mtinv, int nn0, int nm, int nv, double[][] init, double delta, double momentum, double relaxation, int iter) {
+        double[][] vect = new double[nv][nm];
+        double[][] prev = new double[nv][nm];
+        
+        double[] pij = mtval;
+        
+        double[] qij = new double[nn0];
+        
+        double[][] grad = new double[nv][nm];
+        
+        // first we normalize pij
+        double norm=0.0;
+        for (int n=0;n<nn0;n++) norm += mtval[n];
+        if (norm>0) {
+            for (int n=0;n<nn0;n++) mtval[n] /= norm;
+        }
+        
+        // initialization
+        for (int v=0;v<nv;v++) for (int m=0;m<nm;m++) {
+            vect[v][m] = init[v][m];
+            prev[v][m] = init[v][m];
+        }
+        
+        // then we loop
+        for (int t=0;t<iter;t++) {
+            System.out.print("t="+t);
+            
+            // recompute the qij based on current coordinates
+            norm = 0.0;
+            for (int n=0;n<nn0;n++) {
+                qij[n] = 1.0/(1.0 + (vect[X][mtid1[n]]-vect[X][mtid2[n]])*(vect[X][mtid1[n]]-vect[X][mtid2[n]])
+                                  + (vect[Y][mtid1[n]]-vect[Y][mtid2[n]])*(vect[Y][mtid1[n]]-vect[Y][mtid2[n]]) );
+                norm += qij[n];
+            }
+            
+            // recompute the gradient
+            for (int v=0;v<nv;v++) for (int m=0;m<nm;m++) grad[v][m] = 0.0;
+            
+            for (int n=0;n<nn0;n++) {
+                double factor = (pij[n]-qij[n]/norm)*qij[n];
+                for (int v=0;v<nv;v++) {
+                    grad[v][mtid1[n]] += factor*(vect[v][mtid1[n]]-vect[v][mtid2[n]]);
+                    grad[v][mtid2[n]] += factor*(vect[v][mtid2[n]]-vect[v][mtid1[n]]);
+                }
+            }
+            
+            // update the coordinate vector
+            double diff = 0.0;
+            for (int v=0;v<nv;v++) for (int m=0;m<nm;m++) {
+                double curr=vect[v][m];
+                vect[v][m] += delta*grad[v][m] + momentum*(vect[v][m]-prev[v][m]) + relaxation*(init[v][m]-vect[v][m]);
+                prev[v][m] = curr;
+                if (Numerics.abs(prev[v][m]-vect[v][m])>diff) diff = Numerics.abs(prev[v][m]-vect[v][m]);
+            }
+            System.out.println(" dV="+diff);
+        }
+        
+        // copy the result
+        for (int v=0;v<nv;v++) for (int m=0;m<nm;m++) {
+            init[v][m] = vect[v][m];
         }
     }
 
@@ -1865,6 +2124,5 @@ public class SpectralShapeEmbedding {
 	    }
 	    return;
     }
-
 
 }
