@@ -2071,9 +2071,20 @@ public class ConditionalShapeSegmentationSlabs {
             if (rescaleIntensities) {
                 // rescale top % in each shape and intensity priors
                 Percentile measure = new Percentile();
+                //int nsample = Numerics.floor(FastMath.sqrt(ndata));
+                //double[] val = new double[nsample+1];
+                //float[] val = new float[nsample+1];
+                //for (int id=0;id<ndata;id+=nsample) val[id/nsample] = separateIntensProbas[c][0][id];
+                //int nval=0;
+                //for (int id=0;id<ndata;id++) if (separateIntensProbas[c][0][id]!=0) {
+                //    val[nval] = separateIntensProbas[c][0][id];
+                //    nval++;
+                //}
                 double[] val = new double[ndata];
                 for (int id=0;id<ndata;id++) val[id] = separateIntensProbas[c][0][id];
+                
                 float intensMax = (float)measure.evaluate(val, top);
+                //float intensMax = ImageStatistics.robustMaximum(val, (float)top/100.0f, 3, nval,1,1); 
                 System.out.println("top "+top+"% intensity probability (contrast "+c+"): "+intensMax);
                 
                 for (int id=0;id<ndata;id++) for (int best=0;best<nbest;best++) {
