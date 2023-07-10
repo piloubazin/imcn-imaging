@@ -2303,7 +2303,7 @@ public class ConditionalShapeSegmentationSlabs {
                 double sum = 0.0;
                 for (int bin=0;bin<nbins;bin++) sum += trgcondhistogram[tc][obj1][obj2][bin];   
                 //for (int bin=0;bin<nbins;bin++) condhistogram[c][obj1][obj2][bin] /= sum*(condmax[c][obj1][obj2]-condmin[c][obj1][obj2]);   
-                for (int bin=0;bin<nbins;bin++) trgcondhistogram[tc][obj1][obj2][bin] /= sum;   
+                for (int bin=0;bin<nbins;bin++) if (sum>0) trgcondhistogram[tc][obj1][obj2][bin] /= sum;   
             }
         }
     	
