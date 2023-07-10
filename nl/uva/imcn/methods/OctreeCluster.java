@@ -57,10 +57,6 @@ public class OctreeCluster {
 			children = null;
 		}
 		
-		public void finalize() {
-			children = null;
-		}
-		
 	}	
 	
 	public OctreeCluster(int lv_) {

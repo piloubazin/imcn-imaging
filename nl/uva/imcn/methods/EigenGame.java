@@ -63,7 +63,6 @@ public class EigenGame {
 			
 			random = new UnitSphereRandomVectorGenerator(nm);
 		} catch (OutOfMemoryError e){
-			finalize();
 			System.out.println(e.getMessage());
 			return;
 		}
@@ -103,7 +102,6 @@ public class EigenGame {
 			
 			random = new UnitSphereRandomVectorGenerator(nm);
 		} catch (OutOfMemoryError e){
-			finalize();
 			System.out.println(e.getMessage());
 			return;
 		}
@@ -120,15 +118,6 @@ public class EigenGame {
         }
 	}
 
-	/** clean-up: destroy membership and centroid arrays */
-	public final void finalize() {
-		Mv = null;
-		vMv = null;
-		matrix = null;
-		vect = null;
-		System.gc();
-	}
-	
     /** accessor for computed data */ 
     public final double[][] getEigenvectors() { return vect; }
 	

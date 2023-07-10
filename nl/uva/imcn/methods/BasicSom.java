@@ -79,7 +79,6 @@ public class BasicSom {
 		    prev = new float[dim];
 		    lattice = new boolean[nsom];
 		} catch (OutOfMemoryError e){
-			finalize();
 			System.out.println(e.getMessage());
 			return;
 		}
@@ -102,12 +101,6 @@ public class BasicSom {
 		if (debug) System.out.print(nkept+" points, adjusting iterations to: "+tlearn+", "+iter+"\n");
 	}
 
-	/** clean-up: destroy membership and centroid arrays */
-	public final void finalize() {
-		som = null;
-		System.gc();
-	}
-	
 	public final float[][] getSomWeights() { return som; }
 	
 	public final boolean[] getSomShape() { return lattice; }

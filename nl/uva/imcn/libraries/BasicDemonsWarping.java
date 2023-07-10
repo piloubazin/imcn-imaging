@@ -116,11 +116,6 @@ public class BasicDemonsWarping {
 		if (debug) System.out.print("Basic Demons:initialisation\n");
 	}
 
-	final public void finalize() {
-		s = null; u = null; c = null;
-		System.gc();
-	}
-    
    public final float[][] getCurrentTransform() {
 	   return s;
    }

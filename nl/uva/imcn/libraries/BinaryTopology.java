@@ -128,7 +128,6 @@ public class BinaryTopology {
 			}
 			if (checkTopology) {
 				if (!lut.loadCompressedPattern()) {
-					finalize();
 					System.out.println("Problem loading the algorithm's LUT from: "+lut.getFilename());
 					System.out.print("Problem loading the algorithm's LUT from: "+lut.getFilename()+"\n");
 				} else {
@@ -136,7 +135,6 @@ public class BinaryTopology {
 				}
 			}
 		} catch (OutOfMemoryError e){
-			 finalize();
 			System.out.println(e.getMessage());
 			return;
 		}
@@ -151,18 +149,10 @@ public class BinaryTopology {
 	}
 		
 
-	public void finalize() {
-		segmentation = null;
-		heap.finalize();
-		heap = null;
-	}
-	
 	/**
 	 *	clean up the computation arrays
 	 */
 	public final void cleanUp() {
-		
-		heap.finalize();
 		heap = null;
 		System.gc();
 	}
