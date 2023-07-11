@@ -161,7 +161,6 @@ public class TopologyPropagation {
 			}
 			if (checkTopology) {
 				if (!lut.loadCompressedPattern()) {
-					finalize();
 					System.out.println("Problem loading the algorithm's LUT from: "+lut.getFilename());
 					System.out.print("Problem loading the algorithm's LUT from: "+lut.getFilename()+"\n");
 				} else {
@@ -170,7 +169,6 @@ public class TopologyPropagation {
 			}
 		} catch (OutOfMemoryError e){
 			isWorking = false;
-            finalize();
 			System.out.println(e.getMessage());
 			return;
 		}
@@ -190,16 +188,6 @@ public class TopologyPropagation {
 		if (debug) System.out.print("TP:initialisation\n");
 	}
 
-	public void finalize() {
-		image = null;
-		dist = null;
-		label = null;
-		critical = null;
-		geom = null;
-		boundary = null;
-		System.gc();
-	}
-	
 	/**
 	 *	clean up the computation arrays
 	 */

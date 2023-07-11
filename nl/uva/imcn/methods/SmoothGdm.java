@@ -111,13 +111,6 @@ public class SmoothGdm {
 			levels = new float[capacity];
 		}
 		
-		public void finalize() {
-			capacity = -1;
-			id = null;
-			seg = null;
-			levels = null;
-		}
-		
 		public final void addPoint(int xyz, byte[] lb, float[] lvl) {
 			// check for size
 			if (currentsize>=capacity-1) {
@@ -221,7 +214,6 @@ public class SmoothGdm {
 			}
 			if (checkTopology) {
 				if (!lut.loadCompressedPattern()) {
-					finalize();
 					System.out.println("Problem loading the algorithm's LUT from: "+lut.getFilename());
 					System.out.print("Problem loading the algorithm's LUT from: "+lut.getFilename()+"\n");
 				} else {
@@ -229,7 +221,6 @@ public class SmoothGdm {
 				}
 			}
 		} catch (OutOfMemoryError e){
-			 finalize();
 			System.out.println(e.getMessage());
 			return;
 		}
@@ -320,7 +311,6 @@ public class SmoothGdm {
 			}
 			if (checkTopology) {
 				if (!lut.loadCompressedPattern()) {
-					finalize();
 					System.out.println("Problem loading the algorithm's LUT from: "+lut.getFilename());
 					System.out.print("Problem loading the algorithm's LUT from: "+lut.getFilename()+"\n");
 				} else {
@@ -328,7 +318,6 @@ public class SmoothGdm {
 				}
 			}
 		} catch (OutOfMemoryError e){
-			 finalize();
 			System.out.println(e.getMessage());
 			return;
 		}
@@ -354,20 +343,10 @@ public class SmoothGdm {
 		if (debug) System.out.print("initialization\n");
 	}
 
-	public void finalize() {
-		levelset = null;
-		segmentation = null;
-		inlevelset = null;
-		heap.finalize();
-		heap = null;
-	}
-	
 	/**
 	 *	clean up the computation arrays
 	 */
 	public final void cleanUp() {
-		
-		heap.finalize();
 		heap = null;
 		System.gc();
 	}

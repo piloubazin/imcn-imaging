@@ -67,14 +67,6 @@ public class BinaryHeap4D {
 		capacity = Nincrease;
 	}
 	
-	public void finalize() {
-		val = null;
-		x = null;
-		y = null;
-		z = null;
-		k = null;
-	}
-	
 	/**
 	 *  to reset the binary tree
 	 */
