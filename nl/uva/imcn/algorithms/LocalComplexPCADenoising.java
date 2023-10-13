@@ -251,19 +251,24 @@ public class LocalComplexPCADenoising {
             int ngb2 = ngbx*ngby;
             int ngb3 = ngbx*ngby*ngbz;
             boolean process = false;
+            boolean reduced = false;
             if (slab2D) {
-                if (ngb2<ndim) {
-                    //System.out.print("!patch is too small!\n");
-                    process = false;
-                } else if (ngb2>3) {
+                if (ngb2>=ndim) {
                     process = true;
-                }
-            } else if (ngb3>3) {
-                if (ngb3<ndim) {
-                    //System.out.print("!patch is too small!\n");
-                    process = false;
+                } else if (ngb2>=4) {
+                    reduced = true;
                 } else {
+                    process = false;
+                    reduced = false;
+                }
+            } else {
+                if (ngb3>=ndim) {
                     process = true;
+                } else if (ngb3>=4) {
+                    reduced = true;
+                } else {
+                    process = false;
+                    reduced = false;
                 }
             }
             if (process) {
@@ -421,7 +426,7 @@ public class LocalComplexPCADenoising {
                     pcadim[x+dx+nx*(y+dy)+nx*ny*(z+dz)] += (float)(wpatch*(ndim-nzero));
                     errmap[x+dx+nx*(y+dy)+nx*ny*(z+dz)] += (float)(wpatch*rsquare);
                 }
-            } else {
+            } else if (reduced) {
                 // in the case where the spatial dimensions are smaller than the contrast one, flip the indices
                 double[][] patch;
                 int ngbN;
@@ -442,7 +447,7 @@ public class LocalComplexPCADenoising {
                 double[] mean = new double[ngbN];
                for (int n=0;n<ngbN;n++) {
                    for (int i=0;i<ndim;i++) mean[n] += patch[n][i];
-                   mean[n] /= (double)ngbN;
+                   mean[n] /= (double)ndim;
                    for (int i=0;i<ndim;i++) patch[n][i] -= mean[n];
                 }
                 // PCA from SVD X = USVt
@@ -655,19 +660,24 @@ public class LocalComplexPCADenoising {
             int ngb2 = ngbx*ngby;
             int ngb3 = ngbx*ngby*ngbz;
             boolean process = false;
+            boolean reduced = false;
             if (slab2D) {
-                if (ngb2<ndim) {
-                    //System.out.print("!patch is too small!\n");
-                    process = false;
-                } else {
+                if (ngb2>=ndim) {
                     process = true;
+                } else if (ngb2>=4) {
+                    reduced = true;
+                } else {
+                    process = false;
+                    reduced = false;
                 }
             } else {
-                if (ngb3<ndim) {
-                    //System.out.print("!patch is too small!\n");
-                    process = false;
-                } else {
+                if (ngb3>=ndim) {
                     process = true;
+                } else if (ngb3>=4) {
+                    reduced = true;
+                } else {
+                    process = false;
+                    reduced = false;
                 }
             }
             if (process) {
@@ -791,6 +801,130 @@ public class LocalComplexPCADenoising {
                     }
                     weights[x+dx+nx*(y+dy)+nx*ny*(z+dz)] += (float)wpatch;
                     pcadim[x+dx+nx*(y+dy)+nx*ny*(z+dz)] += (float)(wpatch*(nimg-nzero));
+                    errmap[x+dx+nx*(y+dy)+nx*ny*(z+dz)] += (float)(wpatch*rsquare);
+                }
+            } else if (reduced) {
+                double[][] patch;
+                int ngbN;
+                if (slab2D) {
+                    ngbN=ngb2;
+                    patch = new double[ngb2][ndim];
+                    for (int dx=0;dx<ngbx;dx++) for (int dy=0;dy<ngby;dy++) for (int i=0;i<ndim;i++) {
+                        patch[dx+ngbx*dy][i] = images[i][x+dx+nx*(y+dy)+nx*ny*z];
+                    }
+                } else {
+                    ngbN = ngb3;
+                    patch = new double[ngb3][ndim];
+                    for (int dx=0;dx<ngbx;dx++) for (int dy=0;dy<ngby;dy++) for (int dz=0;dz<ngbz;dz++) for (int i=0;i<ndim;i++) {
+                        patch[dx+ngbx*dy+ngbx*ngby*dz][i] = images[i][x+dx+nx*(y+dy)+nx*ny*(z+dz)];
+                    }
+                }
+                // mean over samples
+                double[] mean = new double[ngbN];
+                for (int n=0;n<ngbN;n++) {
+                   for (int i=0;i<nimg*nt;i++) mean[n] += patch[n][i];
+                   mean[n] /= (double)ndim;
+                   for (int i=0;i<nimg*nt;i++) patch[n][i] -= mean[n];
+                }
+                // PCA from SVD X = USVt
+                //System.out.println("perform SVD");
+                Matrix M = new Matrix(patch);
+                SingularValueDecomposition svd = M.svd();
+            
+                // estimate noise
+                // simple version: compute the standard deviation of the patch
+                double sigma = 0.0;
+                for (int i=0;i<ndim;i++) for (int n=0;n<ngbN;n++) {
+                    sigma += patch[n][i]*patch[n][i];
+                }
+                sigma /= ngbN*ndim;
+                sigma = FastMath.sqrt(sigma);
+                
+                // cutoff
+                //System.out.println("eigenvalues: ");
+                double[] eig = new double[ngbN];
+                boolean[] used = new boolean[ngbN];
+                int nzero=0;
+                double eigsum = 0.0;
+                for (int n=0;n<ngbN;n++) {
+                    eig[n] = svd.getSingularValues()[n];
+                    eigsum += Numerics.abs(eig[n]);
+                }
+                // fit second half linear decay model
+                int ngbH = Numerics.floor(ngbN/2.0);
+                double[] loc = new double[ngbH];
+                double[][] fit = new double[ngbH][1];
+                for (int n=ngbN-ngbH;n<ngbN;n++) {
+                    loc[n-ngbN+ngbH] = (n-ngbN+ngbH)/(double)ngbH;
+                    fit[n-ngbN+ngbH][0] = Numerics.abs(eig[n]);
+                }
+                double[][] poly = new double[ngbH][2];
+                for (int n=0;n<ngbH;n++) {
+                    poly[n][0] = 1.0;
+                    poly[n][1] = loc[n];
+                }
+                // invert the linear model
+                Matrix mtx = new Matrix(poly);
+                Matrix smp = new Matrix(fit);
+                Matrix val = mtx.solve(smp);
+        
+                // compute the expected value:
+                double[] expected = new double[ngbN];
+                for (int n=0;n<ngbN;n++) {
+                    double n0 = (n-ngbN+ngbH)/(double)ngbH;
+                    // linear coeffs,
+                    expected[n] = (val.get(0,0) + n0*val.get(1,0));
+                    //expected[n] = n*slope + intercept;
+                }
+                double residual = 0.0;
+                double meaneig = 0.0;
+                double variance = 0.0;
+                for (int n=ngbN-ngbH;n<ngbN;n++) meaneig += Numerics.abs(eig[n]);
+                meaneig /= ngbH;
+                for (int n=ngbN-ngbH;n<ngbN;n++) {
+                    variance += (meaneig-Numerics.abs(eig[n]))*(meaneig-Numerics.abs(eig[n]));
+                    residual += (expected[n]-Numerics.abs(eig[n]))*(expected[n]-Numerics.abs(eig[n]));
+                }
+                double rsquare = 1.0;
+                if (variance>0) rsquare = Numerics.max(1.0 - (residual/variance), 0.0);
+                
+                for (int n=0;n<ngbN;n++) {
+                    //System.out.print(" "+(eig[n]/sigma));
+                    if (n>=minDimension && Numerics.abs(eig[n]) < stdevCutoff*expected[n]) {
+                        used[n] = false;
+                        nzero++;
+                        //System.out.print("(-),");
+                    } else  if (maxDimension>0 && n>=maxDimension) {
+                        used[n] = false;
+                        nzero++;
+                        //System.out.print("(|),");
+                    } else {
+                        used[n] = true;
+                        //System.out.print("(+),");
+                    }
+                }
+                // reconstruct
+                Matrix U = svd.getU();
+                Matrix V = svd.getV();
+                for (int i=0;i<ndim;i++) for (int n=0;n<ngbN;n++) {
+                    // Sum_s>0 s_kU_kV_kt
+                    patch[n][i] = mean[n];
+                   for (int m=0;m<ngbN;m++) if (used[m]) {
+                        patch[n][i] += U.get(n,m)*eig[m]*V.get(i,m);
+                    }
+                }
+                // add to the denoised image
+                double wpatch = (1.0/(1.0 + ngbN - nzero));
+                for (int dx=0;dx<ngbx;dx++) for (int dy=0;dy<ngby;dy++) for (int dz=0;dz<ngbz;dz++) {
+                    for (int i=0;i<ndim;i++) {
+                        denoised[i][x+dx+nx*(y+dy)+nx*ny*(z+dz)] += (float)(wpatch*patch[dx+ngbx*dy+ngbx*ngby*dz][i]);
+                        if (eigen && i<ngbN) {
+                            eigval[i][x+dx+nx*(y+dy)+nx*ny*(z+dz)] += (float)(wpatch*eig[i]);
+                            eigvec[i][x+dx+nx*(y+dy)+nx*ny*(z+dz)] += (float)(wpatch*U.get(dx+ngbx*dy+ngbx*ngby*dz,i));
+                        }
+                    }
+                    weights[x+dx+nx*(y+dy)+nx*ny*(z+dz)] += (float)wpatch;
+                    pcadim[x+dx+nx*(y+dy)+nx*ny*(z+dz)] += (float)(wpatch*(ngbN-nzero));
                     errmap[x+dx+nx*(y+dy)+nx*ny*(z+dz)] += (float)(wpatch*rsquare);
                 }
             }
