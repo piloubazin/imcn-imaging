@@ -88,9 +88,15 @@ public class StackIntensityRegularisation {
                 }
             }
         } else {
-            for (int xyz=0;xyz<nxyz;xyz++) 
-                if (foreground[xyz]>0.5) mask[xyz] = true;
+            int nmask=0;
+            for (int xyz=0;xyz<nxyz;xyz++) {
+                if (foreground[xyz]>0.5) {
+                    mask[xyz] = true;
+                    nmask++;
+                }
                 else mask[xyz] = false;
+            }
+            System.out.print("mask size: "+nmask);
         }            
 	    
 	    // per slice:
