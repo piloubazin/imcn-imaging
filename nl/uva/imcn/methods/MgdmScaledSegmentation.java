@@ -176,13 +176,6 @@ public class MgdmScaledSegmentation {
 			functions = new float[nmgdm][capacity];
 		}
 		
-		public void finalize() {
-			capacity = -1;
-			id = null;
-			labels = null;
-			functions = null;
-		}
-		
 		public final void addPoint(int xyz, byte[][] mgdmlb, float[][] mgdmfn) {
 			// check for size
 			if (currentsize>=capacity-1) {
@@ -327,7 +320,6 @@ public class MgdmScaledSegmentation {
 			}
 			if (checkTopology) {
 				if (!lut.loadCompressedPattern()) {
-					finalize();
 					System.out.println("Problem loading the algorithm's LUT from: "+lut.getFilename());
 					System.out.print("Problem loading the algorithm's LUT from: "+lut.getFilename()+"\n");
 				} else {
@@ -335,7 +327,6 @@ public class MgdmScaledSegmentation {
 				}
 			}
 		} catch (OutOfMemoryError e){
-			 finalize();
 			System.out.println(e.getMessage());
 			return;
 		}
@@ -352,23 +343,12 @@ public class MgdmScaledSegmentation {
 		if (debug) System.out.print("initialization\n");
 	}
 		
-	public void finalize() {
-		mgdmfunctions = null;
-		mgdmlabels = null;
-		segmentation = null;
-		fieldforce = null;
-		balloonforces = null;
-		heap.finalize();
-		heap = null;
-	}
-	
 	/**
 	 *	clean up the computation arrays
 	 */
 	public final void cleanUp() {
 		mgdmfunctions = null;
 		mgdmlabels = null;
-		heap.finalize();
 		heap = null;
 		System.gc();
 	}

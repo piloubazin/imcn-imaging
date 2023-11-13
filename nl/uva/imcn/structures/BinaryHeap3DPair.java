@@ -73,16 +73,6 @@ public class BinaryHeap3DPair {
 		capacity = Nincrease;
 	}
 	
-	public void finalize() {
-		val = null;
-		x = null;
-		y = null;
-		z = null;
-		idx = null;
-		idy = null;
-		idz = null;
-	}
-	
 	/**
 	 *  to reset the binary tree
 	 */

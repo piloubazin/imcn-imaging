@@ -13,7 +13,7 @@ import org.apache.commons.math3.stat.descriptive.rank.*;
 /*
  * @author Pierre-Louis Bazin
  */
-public class ConditionalShapeSegmentation {
+public class ConditionalShapeSegmentationSlabs {
 
 	// data buffers
 	private float[][][] lvlImages;
@@ -946,36 +946,50 @@ public class ConditionalShapeSegmentation {
 		System.out.println("1. estimate subjects distribution");
 		double[] cntsum = new double[nc];
 		double[] cntden = new double[nc];
-		val = new double[nsub];
 		for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
 		    for (int c=0;c<nc;c++) {
+		        int nvalid=0;
                 for  (int sub=0;sub<nsub;sub++) {
-                    val[sub] = contrasts[sub][c][xyz];
+                    // count the number of non-zero values
+                    if (contrasts[sub][c][xyz]!=0) nvalid++;
                 }
-                /*
-                //System.out.println("values");
-                Percentile measure = new Percentile();
-                measure.setData(val);
-			
-                medc[c][idmap[xyz]] = (float)measure.evaluate(50.0); 
-                //System.out.println("median "+medc[c][idmap[xyz]]);
-                iqrc[c][idmap[xyz]] = (float)(measure.evaluate(75.0) - measure.evaluate(25.0));
-                //System.out.println("iqr "+iqrc[c][idmap[xyz]]);
-                */
-                Numerics.sort(val);
-                double med, iqr;
-                if (nsub%2==0) {
-                    med = 0.5*(val[ctr-1]+val[ctr]);
-                    iqr = val[ctr+dev] - val[ctr-1-dev];
-                } else {
-                    med = val[ctr];
-                    iqr = val[ctr+dev] - val[ctr-dev];
-                }                   
-                medc[c][idmap[xyz]] = (float)med;
-                iqrc[c][idmap[xyz]] = (float)iqr;
+                if (nvalid>0) {
+                    val = new double[nvalid];
+                    int ns=0;
+                    for  (int sub=0;sub<nsub;sub++) if (contrasts[sub][c][xyz]!=0) {
+                        val[ns] = contrasts[sub][c][xyz];
+                        ns++;
+                    }
+                    /*
+                    //System.out.println("values");
+                    Percentile measure = new Percentile();
+                    measure.setData(val);
                 
-                cntsum[c] += iqr;
-                cntden[c]++;
+                    medc[c][idmap[xyz]] = (float)measure.evaluate(50.0); 
+                    //System.out.println("median "+medc[c][idmap[xyz]]);
+                    iqrc[c][idmap[xyz]] = (float)(measure.evaluate(75.0) - measure.evaluate(25.0));
+                    //System.out.println("iqr "+iqrc[c][idmap[xyz]]);
+                    */
+                    Numerics.sort(val);
+                    int ctrv = Numerics.floor(nvalid/2);
+                    int devv = Numerics.floor(nvalid/4);
+                    double med, iqr;
+                    if (nvalid%2==0) {
+                        med = 0.5*(val[ctrv-1]+val[ctrv]);
+                        iqr = val[ctrv+devv] - val[ctrv-1-devv];
+                    } else {
+                        med = val[ctrv];
+                        iqr = val[ctrv+devv] - val[ctrv-devv];
+                    }                   
+                    medc[c][idmap[xyz]] = (float)med;
+                    iqrc[c][idmap[xyz]] = (float)iqr;
+                    
+                    cntsum[c] += iqr;
+                    cntden[c]++;
+                } else {
+                    medc[c][idmap[xyz]] = 0.0f;
+                    iqrc[c][idmap[xyz]] = 0.0f;
+                }                    
             }
         }
         for (int c=0;c<nc;c++) {
@@ -1056,8 +1070,8 @@ public class ConditionalShapeSegmentation {
                                 // look for non-zero priors
                                 for (int best=0;best<nbest;best++) {
                                     if (spatialLabels[best][idmap[xyz]]==100*(obj1+1)+(obj2+1)) {
-                                        // found value: proceeed
-                                        for (int sub=0;sub<nsub;sub++) {
+                                        // found value: proceeed, if non-zero
+                                        for (int sub=0;sub<nsub;sub++) if (contrasts[sub][c][xyz]!=0) {
                                             // adds uncertainties from mismatch between subject intensities and mean shape
                                             /*
                                             double psub = spatialProbas[best][idmap[xyz]]*1.0/FastMath.sqrt(2.0*FastMath.PI*1.349*iqr*1.349*iqr)
@@ -1129,7 +1143,7 @@ public class ConditionalShapeSegmentation {
                            for (int best=0;best<nbest;best++) {
                                if (spatialLabels[best][idmap[xyz]]==100*(obj1+1)+(obj2+1)) {
                                    // found value: proceeed
-                                   for (int sub=0;sub<nsub;sub++) {
+                                   for (int sub=0;sub<nsub;sub++) if (contrasts[sub][c][xyz]!=0) {
                                        // adds uncertainties from mismatch between subject intensities and mean shape
                                        double ldist = Numerics.max(levelsets[sub][obj1][xyz]-deltaOut, levelsets[sub][obj2][xyz]-deltaIn, 0.0);
                                        double ldelta = Numerics.max(deltaOut, deltaIn, 1.0);
@@ -1165,7 +1179,7 @@ public class ConditionalShapeSegmentation {
                            for (int best=0;best<nbest;best++) {
                                if (spatialLabels[best][idmap[xyz]]==100*(obj1+1)+(obj2+1)) {
                                    // found value: proceeed
-                                   for (int sub=0;sub<nsub;sub++) {
+                                   for (int sub=0;sub<nsub;sub++) if (contrasts[sub][c][xyz]!=0) {
                                        // adds uncertainties from mismatch between subject intensities and mean shape
                                        double ldist = Numerics.max(levelsets[sub][obj1][xyz]-deltaOut, levelsets[sub][obj2][xyz]-deltaIn, 0.0);
                                        double ldelta = Numerics.max(deltaOut, deltaIn, 1.0);
@@ -2007,18 +2021,20 @@ public class ConditionalShapeSegmentation {
                    }
                    if (likelihood[obj1][obj2]>0) {
                        if (condpair[c][obj1][obj2]) {
-                           double pobjc;
-                           if (modelHistogram) {
-                               int bin = Numerics.bounded(Numerics.ceil( (target[c][xyz]-condmin[c][obj1][obj2])/(condmax[c][obj1][obj2]-condmin[c][obj1][obj2])*nbins)-1, 0, nbins-1);
-                               pobjc = medstdv[c]*condhistogram[c][obj1][obj2][bin];
-                               //pobjc = condhistogram[c][obj1][obj2][bin];
-                           } else {
-                               pobjc = medstdv[c]/FastMath.sqrt(2.0*FastMath.PI*condstdv[c][obj1][obj2]*condstdv[c][obj1][obj2])
-                                            *FastMath.exp( -0.5*(target[c][xyz]-condmean[c][obj1][obj2])*(target[c][xyz]-condmean[c][obj1][obj2])
-                                                               /(condstdv[c][obj1][obj2]*condstdv[c][obj1][obj2]) );
-                               //pobjc = 1.0/FastMath.sqrt(2.0*FastMath.PI*condstdv[c][obj1][obj2]*condstdv[c][obj1][obj2])
-                               //             *FastMath.exp( -0.5*(target[c][xyz]-condmean[c][obj1][obj2])*(target[c][xyz]-condmean[c][obj1][obj2])
-                               //                                /(condstdv[c][obj1][obj2]*condstdv[c][obj1][obj2]) );
+                           double pobjc = 1.0/nbins;
+                           if (target[c][xyz]!=0) {
+                               if (modelHistogram) {
+                                   int bin = Numerics.bounded(Numerics.ceil( (target[c][xyz]-condmin[c][obj1][obj2])/(condmax[c][obj1][obj2]-condmin[c][obj1][obj2])*nbins)-1, 0, nbins-1);
+                                   pobjc = medstdv[c]*condhistogram[c][obj1][obj2][bin];
+                                   //pobjc = condhistogram[c][obj1][obj2][bin];
+                               } else {
+                                   pobjc = medstdv[c]/FastMath.sqrt(2.0*FastMath.PI*condstdv[c][obj1][obj2]*condstdv[c][obj1][obj2])
+                                                *FastMath.exp( -0.5*(target[c][xyz]-condmean[c][obj1][obj2])*(target[c][xyz]-condmean[c][obj1][obj2])
+                                                                   /(condstdv[c][obj1][obj2]*condstdv[c][obj1][obj2]) );
+                                   //pobjc = 1.0/FastMath.sqrt(2.0*FastMath.PI*condstdv[c][obj1][obj2]*condstdv[c][obj1][obj2])
+                                   //             *FastMath.exp( -0.5*(target[c][xyz]-condmean[c][obj1][obj2])*(target[c][xyz]-condmean[c][obj1][obj2])
+                                   //                                /(condstdv[c][obj1][obj2]*condstdv[c][obj1][obj2]) );
+                               }
                            }
                            likelihood[obj1][obj2] *= pobjc;
                        } else {
@@ -2233,7 +2249,7 @@ public class ConditionalShapeSegmentation {
  		    }
         }
     }  
-	
+	// NOTE: this needs updating for slab data: TODO
 	public final void mapAtlasTargetIntensityPriors() {
 	    nx = nax; ny = nay; nz = naz; nxyz = naxyz;
 	    rx = rax; ry = ray; rz = raz;

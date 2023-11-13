@@ -1077,6 +1077,99 @@ public class ObjectLabeling {
 	
 	/** 
 	 *	Connected components of an object.
+     *  2D images: 4-connectivity
+	 */
+	public static final int[] connected4Object2D(boolean img[], int nx, int ny) {
+		int Nlabel;
+		int[] label = new int[nx*ny];
+		ArrayList<Integer>   lb = new ArrayList();
+		int lbMin;
+		int x,y,c,i,j,k;
+		int Nlb;
+		int[]   connect = new int[4];
+		int Nconnect;
+		int AddLabel=0;
+	
+		// the input is a 3x3 binary image (0 out, 1 in)
+        for (x=0;x<nx;x++) {
+			for (y=0;y<ny;y++) {
+				label[x+nx*y] = 0;
+			}
+		}
+		
+		lb.add(0,0);
+		Nlabel = 1;
+		for (x=0;x<nx;x++) {
+			for (y=0;y<ny;y++) {
+				if (img[x+nx*y]) {
+					// object point: neighbors ?
+					Nconnect = 0;
+                    for (i=-1;i<=1;i++) for (j=-1;j<=1;j++) {
+                        if ( (x+i>=0) && (x+i<nx) && (y+j>=0) && (y+j<ny) ) {
+                            if (i*i+j*j < 2) {
+                                if (label[x+i+nx*(y+j)] > 0) {
+                                    connect[Nconnect] = lb.get( label[x+i+nx*(y+j)] );
+                                    Nconnect++;
+                                }
+                            }
+                        }
+                    }
+					// if connected values, find the smallest lb label and attribute it
+					// to all others (-> join labels)
+					if (Nconnect>0) {
+						lbMin = lb.get(connect[0]);
+						for (k=1;k<Nconnect;k++) lbMin = Math.min(lbMin,lb.get(connect[k]) );
+						for (k=0;k<Nconnect;k++) lb.set(connect[k],lbMin);
+						label[x+nx*y] = lbMin;
+					} else {
+						// new, unconnected region
+						label[x+nx*y] = Nlabel;
+						lb.add(Nlabel,Nlabel);
+						Nlabel++;
+						/* not needed with ArrayLists
+						// check if the number of labels is above the threshold
+						if (Nlabel>=lb.length-1) {
+							int[] tmp = new int[2*lb.length];
+							for (int n=0;n<Nlabel;n++) tmp[n] = lb[n];
+							lb = tmp;
+						}
+						*/
+					}
+				}
+			}
+		}
+		// only one level of labels
+		for (k=1;k<Nlabel;k++) {
+			c = k;
+			while (lb.get(c)!=c) c = lb.get(c);
+			lb.set(k, c);
+		}
+		// count the valid labels and rearrange labels to have regular increment
+		Nlb = 0;
+		int[] lb2 = new int[Nlabel];
+		lb2[0] = 0;
+		for (k=1;k<Nlabel;k++) {
+			if (lb.get(k)==k) {
+				Nlb++;
+				lb2[k] = Nlb;
+			}
+		}
+		// copy on label image
+        for (x=0;x<nx;x++) {
+			for (y=0;y<ny;y++) {
+				label[x+nx*y] = lb2[ lb.get( label[x+nx*y] ) ];
+			}
+		}
+        // clean up
+        lb = null;
+		lb2 = null;
+        connect = null;
+	   
+		return label;
+	}
+	
+	/** 
+	 *	Connected components of an object.
      *  2D images: 8-neighborhood 
 	 */
 	public static final int[][] connected8Object2D(boolean img[][], int nx, int ny) {
@@ -1157,6 +1250,98 @@ public class ObjectLabeling {
         for (x=0;x<nx;x++) {
 			for (y=0;y<ny;y++) {
 				label[x][y] = lb2[ lb[ label[x][y] ] ];
+			}
+		}
+        // clean up
+        lb = null;
+		lb2 = null;
+        connect = null;
+	   
+		return label;
+	}
+	
+	/** 
+	 *	Connected components of an object.
+     *  2D images: 8-neighborhood 
+	 */
+	public static final int[] connected8Object2D(boolean img[], int nx, int ny) {
+		int Nlabel;
+		int[] label = new int[nx*ny];
+		int[]   lb = new int[MaxObject];
+		int lbMin;
+		int x,y,c,i,j,k;
+		int Nlb;
+		int[]   connect = new int[4];
+		int Nconnect;
+		int AddLabel=0;
+	
+		// the input is a 3x3 binary image (0 out, 1 in)
+        for (x=0;x<nx;x++) {
+			for (y=0;y<ny;y++) {
+				label[x+nx*y] = 0;
+			}
+		}
+		
+		lb[0] = 0;
+		Nlabel = 1;
+		for (x=0;x<nx;x++) {
+			for (y=0;y<ny;y++) {
+				if (img[x+nx*y]) {
+					// object point: neighbors ?
+					// object point: neighbors ?
+					Nconnect = 0;
+                    for (i=-1;i<=1;i++) for (j=-1;j<=1;j++) {
+                        if ( (x+i>=0) && (x+i<nx) && (y+j>=0) && (y+j<ny) ) {
+                            if (i*i+j*j < 3) {
+                                if (label[x+i+nx*(y+j)] > 0) {
+                                    connect[Nconnect] = lb[ label[x+i+nx*(y+j)] ];
+                                    Nconnect++;
+                                }
+                            }
+                        }
+                    }
+					// if connected values, find the smallest lb label and attribute it
+					// to all others (-> join labels)
+					if (Nconnect>0) {
+						lbMin = lb[connect[0]];
+						for (k=1;k<Nconnect;k++) lbMin = Math.min(lbMin,lb[connect[k]]);
+						for (k=0;k<Nconnect;k++) lb[connect[k]] = lbMin;
+						label[x+nx*y] = lbMin;
+					} else {
+						// new, unconnected region
+						label[x+nx*y] = Nlabel;
+						lb[Nlabel] = Nlabel;
+						Nlabel++;
+						// check if the number of labels is above the threshold
+						if (Nlabel>=lb.length-1) {
+							int[] tmp = new int[2*lb.length];
+							for (int n=0;n<Nlabel;n++) tmp[n] = lb[n];
+							lb = tmp;
+						}
+					}
+				}
+			}
+		}
+		// only one level of labels
+		for (k=1;k<Nlabel;k++) {
+			c = k;
+			while (lb[c]!=c) c = lb[c];
+			lb[k] = c;
+		}
+		// count the valid labels and rearrange labels to have regular increment
+		Nlb = 0;
+		int[] lb2 = new int[Nlabel];
+		lb2[0] = 0;
+		for (k=1;k<Nlabel;k++) {
+			if (lb[k]==k) {
+				Nlb++;
+				lb2[k] = Nlb;
+			}
+		}
+		// copy on label image
+        for (x=0;x<nx;x++) {
+			for (y=0;y<ny;y++) {
+				label[x+nx*y] = lb2[ lb[ label[x+nx*y] ] ];
 			}
 		}
         // clean up
