@@ -31,6 +31,7 @@ public class LevelsetCurvature {
 	// create inputs
 	public final void setLevelsetImage(float[] val) { lvlImage = val; }
 	public final void setMaxDistance(float val) { distance = val; }
+	public final void setKernelParameter(int val) { kernelParam = val; }
 	
 	public final void setDimensions(int x, int y, int z) { nx=x; ny=y; nz=z; nxyz=nx*ny*nz; }
 	public final void setDimensions(int[] dim) { nx=dim[0]; ny=dim[1]; nz=dim[2]; nxyz=nx*ny*nz; }
