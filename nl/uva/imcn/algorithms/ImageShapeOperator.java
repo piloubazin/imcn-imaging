@@ -46,7 +46,7 @@ public class ImageShapeOperator {
 		float[][] second = new float[3][3];
 		shapeImage = new float[nxyz*6];
 		
-		for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for int z=1;z<nz-1;z++) {
+		for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
 		    int xyz = x*nx*y+nx*ny*z;
 		    if (image[xyz]!=0) {
 		        float dx = 0.5f*(image[xyz+1]-image[xyz-1]);
@@ -84,12 +84,12 @@ public class ImageShapeOperator {
                 second[Y][X] = dxy;
                 
                 // combine forms to create operator
-                shapeImage[xyz+0*nxyz] = first[X][X]*second[X][X] = first[X][Y]*second[Y][X] + first[X][Z]*second[Z][X];
-                shapeImage[xyz+1*nxyz] = first[Y][X]*second[X][Y] = first[Y][Y]*second[Y][Y] + first[Y][Z]*second[Z][Y];
-                shapeImage[xyz+2*nxyz] = first[Z][X]*second[X][Z] = first[Z][Y]*second[Y][Z] + first[Z][Z]*second[Z][Z];
-                shapeImage[xyz+3*nxyz] = first[X][X]*second[X][Y] = first[X][Y]*second[Y][Y] + first[X][Z]*second[Z][Y];
-                shapeImage[xyz+4*nxyz] = first[X][X]*second[X][Z] = first[X][Y]*second[Y][Z] + first[X][Z]*second[Z][Z];
-                shapeImage[xyz+5*nxyz] = first[Y][X]*second[X][Z] = first[Y][Y]*second[Y][Z] + first[Y][Z]*second[Z][Z];
+                shapeImage[xyz+0*nxyz] = first[X][X]*second[X][X] + first[X][Y]*second[Y][X] + first[X][Z]*second[Z][X];
+                shapeImage[xyz+1*nxyz] = first[Y][X]*second[X][Y] + first[Y][Y]*second[Y][Y] + first[Y][Z]*second[Z][Y];
+                shapeImage[xyz+2*nxyz] = first[Z][X]*second[X][Z] + first[Z][Y]*second[Y][Z] + first[Z][Z]*second[Z][Z];
+                shapeImage[xyz+3*nxyz] = first[X][X]*second[X][Y] + first[X][Y]*second[Y][Y] + first[X][Z]*second[Z][Y];
+                shapeImage[xyz+4*nxyz] = first[X][X]*second[X][Z] + first[X][Y]*second[Y][Z] + first[X][Z]*second[Z][Z];
+                shapeImage[xyz+5*nxyz] = first[Y][X]*second[X][Z] + first[Y][Y]*second[Y][Z] + first[Y][Z]*second[Z][Z];
             }
                 
         }
