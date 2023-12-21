@@ -369,7 +369,7 @@ public class LinearFiberMapping3D {
                         lz[nl] = heap.getFirstZ();
                         lw[nl] = heap.getFirst();
                         minscore = heap.getFirst();
-                        used[lx[nl]+nx*ly[nl]+nx*ny*lz[nl]] = true;
+                        used[lx[nl] + nx*ly[nl] + nx*ny*lz[nl]] = true;
                         heap.removeFirst();
     
                         for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) for (int dz=-1;dz<=1;dz++) {
@@ -448,18 +448,19 @@ public class LinearFiberMapping3D {
                     
                     // Add line to detected ones
                     for (int n=0;n<nl;n++) {
+                        int xyz = lx[n]+nx*ly[n]+nx*ny*lz[n];
                         // label with starting location id, so each get a different id
-                        lines[lx[n]+nx*ly[n]+nx*ny*lz[n]] = xM+nx*yM+nx*ny*zM;
-                        theta[lx[n]+nx*ly[n]+nx*ny*lz[n]+nx*ny*nz*X] = (float)lvx;
-                        theta[lx[n]+nx*ly[n]+nx*ny*lz[n]+nx*ny*nz*Y] = (float)lvy;
-                        theta[lx[n]+nx*ly[n]+nx*ny*lz[n]+nx*ny*nz*Z] = (float)lvz;
-                        length[lx[n]+nx*ly[n]+nx*ny*lz[n]] = lengthL;
-                        ani[lx[n]+nx*ly[n]+nx*ny*lz[n]] = 1.0f-thickL/lengthL;
-                        propag[lx[n]+nx*ly[n]+nx*ny*lz[n]] = meanp;
+                        lines[xyz] = xM+nx*yM+nx*ny*zM;
+                        theta[xyz+nx*ny*nz*X] = (float)lvx;
+                        theta[xyz+nx*ny*nz*Y] = (float)lvy;
+                        theta[xyz+nx*ny*nz*Z] = (float)lvz;
+                        length[xyz] = lengthL;
+                        ani[xyz] = 1.0f-thickL/lengthL;
+                        propag[xyz] = meanp;
                     }
                 } else {
                     // remove single point detections (artefacts)
-                    propag[lx[0]+nx*ly[0]] = 0.0f;
+                    propag[lx[0]+nx*ly[0]+nx*ny*lz[0]] = 0.0f;
                 }
             }
 		}
