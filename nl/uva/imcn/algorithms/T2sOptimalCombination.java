@@ -38,6 +38,7 @@ public class T2sOptimalCombination {
 	public final void setEchoTimeAt(int num, float val) { te[num] = val; }
 	
 	public final void setImageEchoDepth(int[] val) { depth = val; }
+	public final void setRobustEstimate(boolean val) { robust = val; }
 
 	public final void setDimensions(int x, int y, int z) { nx=x; ny=y; nz=z; nt=1; nxyz=nx*ny*nz; }
 	public final void setDimensions(int x, int y, int z, int t) { nx=x; ny=y; nz=z; nt=t; nxyz=nx*ny*nz; }
