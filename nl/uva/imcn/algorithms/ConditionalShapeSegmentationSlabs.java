@@ -3664,7 +3664,8 @@ public class ConditionalShapeSegmentationSlabs {
         }
 		// important: skip first label as background (allows for unbounded growth)
         for (int obj=nbg;obj<nobj;obj++) {
-		    // compute label volumes
+           float spatialvol = 0.0f;
+		   // compute label volumes
            for (int b=0;b<nbest;b++) {
                for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
                     int xyz=x+nx*y+nx*ny*z;
@@ -3682,9 +3683,14 @@ public class ConditionalShapeSegmentationSlabs {
                             }
                             if (b==0) voldata[obj] += rx*ry*rz;
                         }
+                        if (spatialLabels[b][id]>100*(obj+1) && spatialLabels[b][id]<100*(obj+2)) {
+                            if (b==0) spatialvol += rx*ry*rz;
+                        }
                     }
                 }
                 if (bestscore[obj]>-INF) b = nbest;
+                // revert to spatial prior volume if nothing is left when including the intensities
+                if (voldata[obj]==0) voldata[obj] = spatialvol;
             }
             
             // boundary: mean difference
