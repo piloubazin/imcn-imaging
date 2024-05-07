@@ -214,6 +214,12 @@ public class ConditionalShapeSegmentationSlabs {
                 }
             }
             System.out.println("work region size: "+ndata);
+            // only keep 6-connected component to avoid border effects from coordinate mappings
+            mask = ObjectLabeling.largestObject(mask, ntx, nty, ntz, 6); 
+            ndata = 0;
+            for (int idx=0;idx<ntxyz;idx++) if (mask[idx]) ndata++;
+            
+            System.out.println("adjusted work region size: "+ndata);
             // build ID map
             idmap = new int[ntxyz];
             int id = 0;
@@ -4117,13 +4123,16 @@ public class ConditionalShapeSegmentationSlabs {
                             if (score>bestscore[obj]) {
                                 bestscore[obj] = score;
                                 start[obj] = xyz;
+                                //System.out.println("("+obj+":"+x+","+y+","+z+"="+score+")");
                             }
                         }
                     }
                 }
                 if (bestscore[obj]>-INF) b = nbest;
             }
+            if (start[obj]==0) System.out.println("\n!! Missing structure: "+obj);    
             // hardcode the starting points?
+            /* useless??
             //heap.addValue(bestscore[obj],start[obj],101*(obj+1));
             vol[obj]+= rx*ry*rz;
             labels[idmap[start[obj]]] = obj;
@@ -4151,12 +4160,12 @@ public class ConditionalShapeSegmentationSlabs {
                     }
                 }
             }
+            */
         }
                 
         float[] prev = new float[nobj];
         double[] bestvol = new double[nobj];
         for (int obj=0;obj<nobj;obj++) {
-            vol[obj] = 0.0;
             bestvol[obj] = FastMath.exp(logVolMean[obj]);
         }
         System.out.println("\nOptimized volumes: ");
@@ -4167,11 +4176,15 @@ public class ConditionalShapeSegmentationSlabs {
             vol[obj] = 0.0;
         }
         for(int id=0;id<ndata;id++) labels[id] = 0;
+        // init all starting points before everything else (avoid writing over them)
         for (int obj=nbg;obj<nobj;obj++) {
             // hardcode the starting points?
             //heap.addValue(bestscore[obj],start[obj],101*(obj+1));
             vol[obj]+= rx*ry*rz;
             labels[idmap[start[obj]]] = obj;
+        }
+        // look for neighbors
+        for (int obj=nbg;obj<nobj;obj++) {
             for (byte k = 0; k<connectivity; k++) {
                 int ngb = Ngb.neighborIndex(k, start[obj], nx, ny, nz);
                 if (ngb>0 && ngb<nxyz && mask[ngb]) {
