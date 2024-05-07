@@ -783,6 +783,7 @@ public class ConditionalShapeSegmentationSlabs {
                     }
                     System.out.print("bg size: "+roisize+"\n");
                     fcm.setMaskImage(roi);
+                    fcm.maskImageNaNs();
                     fcm.setClusterNumber(nbg);
                     fcm.setSmoothing(0.001f);
                     fcm.setMaxDist(0.001f);
