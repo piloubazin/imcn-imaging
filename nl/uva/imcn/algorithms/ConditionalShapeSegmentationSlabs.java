@@ -4116,11 +4116,14 @@ public class ConditionalShapeSegmentationSlabs {
                     int xyz=x+nx*y+nx*ny*z;
                     if (mask[xyz]) {
                         int id = idmap[xyz];
-                        if (combinedLabels[b][id]>100*(obj+1) && combinedLabels[b][id]<100*(obj+2)) {
+                        if (spatialLabels[b][id]>100*(obj+1) && spatialLabels[b][id]<100*(obj+2)) {
+                        //if (combinedLabels[b][id]>100*(obj+1) && combinedLabels[b][id]<100*(obj+2)) {
                         //if (combinedLabels[b][idmap[xyz]]==101*(obj+1)) {
                             float score;
-                            if (b==0) score = combinedProbas[0][id]-combinedProbas[nextbest[obj][id]][id];
-                            else score = combinedProbas[b][id]-combinedProbas[0][id];
+                            if (b==0) score = spatialProbas[0][id]-spatialProbas[nextbest[obj][id]][id];
+                            else score = spatialProbas[b][id]-spatialProbas[0][id];
+                            //if (b==0) score = combinedProbas[0][id]-combinedProbas[nextbest[obj][id]][id];
+                            //else score = combinedProbas[b][id]-combinedProbas[0][id];
                             if (score>bestscore[obj]) {
                                 bestscore[obj] = score;
                                 start[obj] = xyz;
