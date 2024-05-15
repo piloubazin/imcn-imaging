@@ -4111,17 +4111,17 @@ public class ConditionalShapeSegmentationSlabs {
 		// important: skip first labels as background (allows for unbounded growth)
         for (int obj=nbg;obj<nobj;obj++) {
 		    // find highest scoring voxel as starting point
-           for (int b=0;b<nbest;b++) {
+           for (int s=0;s<nskel;s++) {
+           //for (int b=0;b<nbest;b++) {
                for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
                     int xyz=x+nx*y+nx*ny*z;
                     if (mask[xyz]) {
                         int id = idmap[xyz];
-                        if (spatialLabels[b][id]>100*(obj+1) && spatialLabels[b][id]<100*(obj+2)) {
+                        if (skeletonLabels[s][id]==101*(obj+1)) {
+                        //if (spatialLabels[b][id]>100*(obj+1) && spatialLabels[b][id]<100*(obj+2)) {
                         //if (combinedLabels[b][id]>100*(obj+1) && combinedLabels[b][id]<100*(obj+2)) {
                         //if (combinedLabels[b][idmap[xyz]]==101*(obj+1)) {
-                            float score;
-                            if (b==0) score = spatialProbas[0][id]-spatialProbas[nextbest[obj][id]][id];
-                            else score = spatialProbas[b][id]-spatialProbas[0][id];
+                            float score = skeletonProbas[s][id];
                             //if (b==0) score = combinedProbas[0][id]-combinedProbas[nextbest[obj][id]][id];
                             //else score = combinedProbas[b][id]-combinedProbas[0][id];
                             if (score>bestscore[obj]) {
@@ -4132,39 +4132,11 @@ public class ConditionalShapeSegmentationSlabs {
                         }
                     }
                 }
-                if (bestscore[obj]>-INF) b = nbest;
+                if (bestscore[obj]>-INF) s = nskel;
+                //if (bestscore[obj]>-INF) b = nbest;
             }
             if (start[obj]==0) System.out.println("\n!! Missing structure: "+obj);    
             // hardcode the starting points?
-            /* useless??
-            //heap.addValue(bestscore[obj],start[obj],101*(obj+1));
-            vol[obj]+= rx*ry*rz;
-            labels[idmap[start[obj]]] = obj;
-            for (byte k = 0; k<connectivity; k++) {
-                int ngb = Ngb.neighborIndex(k, start[obj], nx, ny, nz);
-                if (ngb>0 && ngb<nxyz && mask[ngb]) {
-                    if (labels[idmap[ngb]]==0) {
-                        for (int best=0;best<nbest;best++) {
-                            if (combinedLabels[best][idmap[ngb]]>100*(obj+1) && combinedLabels[best][idmap[ngb]]<100*(obj+2)) {
-                                float score = combinedProbas[best][idmap[ngb]]-combinedProbas[Numerics.max(0,nextbest[obj][idmap[ngb]])][idmap[ngb]];
-                                float offset = 0.0f;
-                                for (int s=0;s<nskel;s++) {
-                                    if (skeletonLabels[s][idmap[ngb]]==101*(obj+1)) {
-                                        offset = -Numerics.abs(skeletonProbas[s][idmap[ngb]]-skeletonProbas[s][idmap[start[obj]]]);
-                                        s = nskel;
-                                    }
-                                }
-                                score += offset;
-                                if (k>=18) if (score>0) score *= ISQRT3; else score /= ISQRT3;
-                                else if (k>=6) if (score>0) score *= ISQRT2; else score /= ISQRT2;
-                                heap.addValue(score,ngb,combinedLabels[best][idmap[ngb]]);
-                                best=nbest;
-                            }
-                        }
-                    }
-                }
-            }
-            */
         }
                 
         float[] prev = new float[nobj];
