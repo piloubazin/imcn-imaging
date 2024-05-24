@@ -67,6 +67,12 @@ public class FuzzyCmeans {
 	    mask = new boolean[nxyz];
 	    for (int xyz=0;xyz<nxyz;xyz++) mask[xyz] = true;
 	}
+	public final void maskImageNaNs() { 
+	    for (int xyz=0;xyz<nxyz;xyz++) if (Float.isNaN(image[xyz])) {
+	        mask[xyz] = false; 
+	        image[xyz] = 0.0f;
+	    }
+	}
 	
 	public final void setClusterNumber(int val) { clusters = val; }
 	public final void setSmoothing(float val) { smoothing = val; }

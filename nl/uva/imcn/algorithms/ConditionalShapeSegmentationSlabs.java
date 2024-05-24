@@ -214,6 +214,12 @@ public class ConditionalShapeSegmentationSlabs {
                 }
             }
             System.out.println("work region size: "+ndata);
+            // only keep 6-connected component to avoid border effects from coordinate mappings
+            mask = ObjectLabeling.largestObject(mask, ntx, nty, ntz, 6); 
+            ndata = 0;
+            for (int idx=0;idx<ntxyz;idx++) if (mask[idx]) ndata++;
+            
+            System.out.println("adjusted work region size: "+ndata);
             // build ID map
             idmap = new int[ntxyz];
             int id = 0;
@@ -777,6 +783,7 @@ public class ConditionalShapeSegmentationSlabs {
                     }
                     System.out.print("bg size: "+roisize+"\n");
                     fcm.setMaskImage(roi);
+                    fcm.maskImageNaNs();
                     fcm.setClusterNumber(nbg);
                     fcm.setSmoothing(0.001f);
                     fcm.setMaxDist(0.001f);
@@ -3664,7 +3671,8 @@ public class ConditionalShapeSegmentationSlabs {
         }
 		// important: skip first label as background (allows for unbounded growth)
         for (int obj=nbg;obj<nobj;obj++) {
-		    // compute label volumes
+           float spatialvol = 0.0f;
+		   // compute label volumes
            for (int b=0;b<nbest;b++) {
                for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
                     int xyz=x+nx*y+nx*ny*z;
@@ -3682,9 +3690,14 @@ public class ConditionalShapeSegmentationSlabs {
                             }
                             if (b==0) voldata[obj] += rx*ry*rz;
                         }
+                        if (spatialLabels[b][id]>100*(obj+1) && spatialLabels[b][id]<100*(obj+2)) {
+                            if (b==0) spatialvol += rx*ry*rz;
+                        }
                     }
                 }
                 if (bestscore[obj]>-INF) b = nbest;
+                // revert to spatial prior volume if nothing is left when including the intensities
+                if (voldata[obj]==0) voldata[obj] = spatialvol;
             }
             
             // boundary: mean difference
@@ -4098,59 +4111,37 @@ public class ConditionalShapeSegmentationSlabs {
 		// important: skip first labels as background (allows for unbounded growth)
         for (int obj=nbg;obj<nobj;obj++) {
 		    // find highest scoring voxel as starting point
-           for (int b=0;b<nbest;b++) {
+           for (int s=0;s<nskel;s++) {
+           //for (int b=0;b<nbest;b++) {
                for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
                     int xyz=x+nx*y+nx*ny*z;
                     if (mask[xyz]) {
                         int id = idmap[xyz];
-                        if (combinedLabels[b][id]>100*(obj+1) && combinedLabels[b][id]<100*(obj+2)) {
+                        if (skeletonLabels[s][id]==101*(obj+1)) {
+                        //if (spatialLabels[b][id]>100*(obj+1) && spatialLabels[b][id]<100*(obj+2)) {
+                        //if (combinedLabels[b][id]>100*(obj+1) && combinedLabels[b][id]<100*(obj+2)) {
                         //if (combinedLabels[b][idmap[xyz]]==101*(obj+1)) {
-                            float score;
-                            if (b==0) score = combinedProbas[0][id]-combinedProbas[nextbest[obj][id]][id];
-                            else score = combinedProbas[b][id]-combinedProbas[0][id];
+                            float score = skeletonProbas[s][id];
+                            //if (b==0) score = combinedProbas[0][id]-combinedProbas[nextbest[obj][id]][id];
+                            //else score = combinedProbas[b][id]-combinedProbas[0][id];
                             if (score>bestscore[obj]) {
                                 bestscore[obj] = score;
                                 start[obj] = xyz;
+                                //System.out.println("("+obj+":"+x+","+y+","+z+"="+score+")");
                             }
                         }
                     }
                 }
-                if (bestscore[obj]>-INF) b = nbest;
+                if (bestscore[obj]>-INF) s = nskel;
+                //if (bestscore[obj]>-INF) b = nbest;
             }
+            if (start[obj]==0) System.out.println("\n!! Missing structure: "+obj);    
             // hardcode the starting points?
-            //heap.addValue(bestscore[obj],start[obj],101*(obj+1));
-            vol[obj]+= rx*ry*rz;
-            labels[idmap[start[obj]]] = obj;
-            for (byte k = 0; k<connectivity; k++) {
-                int ngb = Ngb.neighborIndex(k, start[obj], nx, ny, nz);
-                if (ngb>0 && ngb<nxyz && mask[ngb]) {
-                    if (labels[idmap[ngb]]==0) {
-                        for (int best=0;best<nbest;best++) {
-                            if (combinedLabels[best][idmap[ngb]]>100*(obj+1) && combinedLabels[best][idmap[ngb]]<100*(obj+2)) {
-                                float score = combinedProbas[best][idmap[ngb]]-combinedProbas[Numerics.max(0,nextbest[obj][idmap[ngb]])][idmap[ngb]];
-                                float offset = 0.0f;
-                                for (int s=0;s<nskel;s++) {
-                                    if (skeletonLabels[s][idmap[ngb]]==101*(obj+1)) {
-                                        offset = -Numerics.abs(skeletonProbas[s][idmap[ngb]]-skeletonProbas[s][idmap[start[obj]]]);
-                                        s = nskel;
-                                    }
-                                }
-                                score += offset;
-                                if (k>=18) if (score>0) score *= ISQRT3; else score /= ISQRT3;
-                                else if (k>=6) if (score>0) score *= ISQRT2; else score /= ISQRT2;
-                                heap.addValue(score,ngb,combinedLabels[best][idmap[ngb]]);
-                                best=nbest;
-                            }
-                        }
-                    }
-                }
-            }
         }
                 
         float[] prev = new float[nobj];
         double[] bestvol = new double[nobj];
         for (int obj=0;obj<nobj;obj++) {
-            vol[obj] = 0.0;
             bestvol[obj] = FastMath.exp(logVolMean[obj]);
         }
         System.out.println("\nOptimized volumes: ");
@@ -4161,11 +4152,15 @@ public class ConditionalShapeSegmentationSlabs {
             vol[obj] = 0.0;
         }
         for(int id=0;id<ndata;id++) labels[id] = 0;
+        // init all starting points before everything else (avoid writing over them)
         for (int obj=nbg;obj<nobj;obj++) {
             // hardcode the starting points?
             //heap.addValue(bestscore[obj],start[obj],101*(obj+1));
             vol[obj]+= rx*ry*rz;
             labels[idmap[start[obj]]] = obj;
+        }
+        // look for neighbors
+        for (int obj=nbg;obj<nobj;obj++) {
             for (byte k = 0; k<connectivity; k++) {
                 int ngb = Ngb.neighborIndex(k, start[obj], nx, ny, nz);
                 if (ngb>0 && ngb<nxyz && mask[ngb]) {

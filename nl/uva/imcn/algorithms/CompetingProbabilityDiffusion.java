@@ -58,7 +58,10 @@ public class CompetingProbabilityDiffusion {
 	    // for speed and memory: shrink to acceptable values first
 	    int nmask = 0;
 	    boolean[] mask = new boolean[nxyz];
-	    for (int xyz=0;xyz<nxyz;xyz++) {
+	    // remove iamge border
+	    //for (int xyz=0;xyz<nxyz;xyz++) {
+	    for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
+	        int xyz = x+nx*y+nx*ny*z;
 	        boolean found=false;
 	        if (prior[xyz]>0) found=true;
 	        else {
