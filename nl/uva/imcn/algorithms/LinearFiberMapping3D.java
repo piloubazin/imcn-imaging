@@ -263,6 +263,7 @@ public class LinearFiberMapping3D {
         }
         
         boolean[] used = new boolean[nx*ny*nz];
+        proba = new float[nx*ny*nz];
         while (ordering.isNotEmpty()) {
             float maxpropag = ordering.getFirst();
             int xM = ordering.getFirstX();
@@ -470,16 +471,16 @@ public class LinearFiberMapping3D {
                         theta[xyz+nx*ny*nz*Z] = (float)lvz;
                         length[xyz] = lengthL;
                         ani[xyz] = 1.0f-thickL/lengthL;
-                        propag[xyz] = meanp;
+                        proba[xyz] = meanp;
                     }
                 } else {
                     // remove single point detections (artefacts)
-                    propag[lx[0]+nx*ly[0]+nx*ny*lz[0]] = 0.0f;
+                    //propag[lx[0]+nx*ly[0]+nx*ny*lz[0]] = 0.0f;
                 }
             }
 		}
 		if (estimateDiameter) {
-		    boolean[] obj = ObjectExtraction.objectFromImage(propag, nx,ny,nz, 0.0f, ObjectExtraction.SUPERIOR);
+		    boolean[] obj = ObjectExtraction.objectFromImage(proba, nx,ny,nz, 0.0f, ObjectExtraction.SUPERIOR);
 		
 		    estimateDiameter(inputImage, obj, maxscale, maxdirection, mask);    
 		}
@@ -490,7 +491,7 @@ public class LinearFiberMapping3D {
             ordering.reset();
             for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
                 int xyz = x + nx*y + nx*ny*z;
-                if (lines[xyz]!=0) ordering.addValue(propag[xyz], x, y, z);
+                if (lines[xyz]!=0) ordering.addValue(proba[xyz], x, y, z);
             }
             while (ordering.isNotEmpty()) {
                 float score = ordering.getFirst();
@@ -510,19 +511,19 @@ public class LinearFiberMapping3D {
                             theta[ngb+nx*ny*nz*Z] = theta[xyz+nx*ny*nz*Z];
                             length[ngb] = length[xyz];
                             ani[ngb] = ani[xyz];
-                            propag[ngb] = score-1.0f;
-                            ordering.addValue(propag[ngb], x+dx,y+dy,z+dz);
+                            proba[ngb] = score-1.0f;
+                            ordering.addValue(proba[ngb], x+dx,y+dy,z+dz);
                         }
                     } else {
-                        if (mask[ngb] && lines[ngb]==0 && propag[ngb]>extendRatio*score) {
+                        if (mask[ngb] && lines[ngb]==0 && proba[ngb]>extendRatio*score) {
                             lines[ngb] = lines[xyz];
                             theta[ngb+nx*ny*nz*X] = theta[xyz+nx*ny*nz*X];
                             theta[ngb+nx*ny*nz*Y] = theta[xyz+nx*ny*nz*Y];
                             theta[ngb+nx*ny*nz*Z] = theta[xyz+nx*ny*nz*Z];
                             length[ngb] = length[xyz];
                             ani[ngb] = ani[xyz];
-                            propag[ngb] = extendRatio*score;
-                            ordering.addValue(propag[ngb], x+dx,y+dy,z+dz);
+                            proba[ngb] = extendRatio*score;
+                            ordering.addValue(proba[ngb], x+dx,y+dy,z+dz);
                         }
                     }
                 }	
@@ -530,7 +531,7 @@ public class LinearFiberMapping3D {
         }
 		// Output
 		BasicInfo.displayMessage("...output inputImages\n");
-		probaImage = propag;
+		probaImage = proba;
 		lineImage = lines;
 		thetaImage = theta;
 		aniImage = ani;
@@ -2200,7 +2201,6 @@ public class LinearFiberMapping3D {
 				jfct.setImagesData(probaInImg,nx,ny,nz);
 				jfct.setPointData(x,y,z, rIn,finalDir,  tan1, tan2);
 				
-				
 				double[] init={0.0f,0.0f,(double)rIn} ;
 				SimplexOptimizer optimizer= new SimplexOptimizer(1e-5,1e-10);
 				MaxEval max=new MaxEval(10000);
@@ -2215,10 +2215,10 @@ public class LinearFiberMapping3D {
 				
 				firstEst[x][y][z]=FastMath.abs(result[2]);	
 				float maxDist= (float)rIn+0.5f;
-				if(firstEst[x][y][z]>maxDist){
-					firstEst[x][y][z]=0.0f;	
+				if (firstEst[x][y][z]>maxDist) {
+					firstEst[x][y][z]=maxDist;	
 					wtOptim++;
-				}else{				
+				} else {				
 					float xc=FastMath.round(result[0]*tan1[X]+result[1]*tan2[X]);
 					float yc=FastMath.round(result[0]*tan1[Y]+result[1]*tan2[Y]);
 					float zc=FastMath.round(result[0]*tan1[Z]+result[1]*tan2[Z]);
