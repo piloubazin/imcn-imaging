@@ -2198,6 +2198,7 @@ public class ConditionalShapeSegmentationSlabs {
 		combinedLabels = new int[nbest][ndata];
 		for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
 		    double[][] posteriors = new double[nobj][nobj];
+		    /* too slow? better to populate only the non-zero items
 		    for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
                 // look for non-zero priors
                 posteriors[obj1][obj2] = 0.0;
@@ -2239,7 +2240,38 @@ public class ConditionalShapeSegmentationSlabs {
                         posteriors[obj1][obj2] = FastMath.pow(posteriors[obj1][obj2]*FastMath.pow(intensPrior,intensityImportance*nc),2.0/(intensityImportance*nc+1.0));
                     }
                 }
+            }*/
+            // spatial prior
+            for (int best=0;best<nbest;best++) {
+                int obj1 = Numerics.floor(spatialLabels[best][idmap[xyz]]/100.0)-1;
+                int obj2 = spatialLabels[best][idmap[xyz]]-100*(obj1+1)-1;
+                
+                posteriors[obj1][obj2] = spatialProbas[best][idmap[xyz]];
             }
+            // use the skeleton as prior?
+            for (int best=0;best<nskel;best++) {
+                int obj = Numerics.floor(skeletonLabels[best][idmap[xyz]]/101.0)-1;
+                if (skeletonProbas[best][idmap[xyz]]>posteriors[obj][obj]*posteriors[obj][obj])
+                    posteriors[obj][obj] = FastMath.sqrt(skeletonProbas[best][idmap[xyz]]);
+            }
+            // intensity posterior
+            for (int best=0;best<nbest;best++) {
+                int obj1 = Numerics.floor(intensityLabels[best][idmap[xyz]]/100.0)-1;
+                int obj2 = intensityLabels[best][idmap[xyz]]-100*(obj1+1)-1;
+            
+                if (posteriors[obj1][obj2]>0) {
+                    double intensPrior = intensityProbas[best][idmap[xyz]];
+                    // now the intensity weights are computed beforehand, as the number of contrasts may vary per structure
+                    if (averageIntensityPriors) {
+                        //posteriors[obj1][obj2] = posteriors[obj1][obj2]*FastMath.pow(intensPrior,intensityImportance/nc);
+                        posteriors[obj1][obj2] = posteriors[obj1][obj2]*intensPrior;
+                    } else {
+                        //posteriors[obj1][obj2] = FastMath.pow(posteriors[obj1][obj2]*FastMath.pow(intensPrior,intensityImportance),2.0/(intensityImportance*nc+1.0));
+                        posteriors[obj1][obj2] = FastMath.pow(posteriors[obj1][obj2]*FastMath.pow(intensPrior,intensityImportance*nc),2.0/(intensityImportance*nc+1.0));
+                    }
+                }
+            }
+                    
             for (int best=0;best<nbest;best++) {
                 int best1=0;
                 int best2=0;
