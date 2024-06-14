@@ -302,7 +302,7 @@ public class ConditionalShapeSegmentationSlabs {
                 //logVolStdv[obj] += FastMath.log(mappedVol[obj]) - FastMath.log(atlasVol[obj]);
             }
             
-            // adjust the volume boudnary priors too...
+            // adjust the volume boundary priors too...
             int[] atlasBoundaryLabels = atlasBoundaryLabels(pval, lval);
             float[][] atlasVol2 = new float[nobj][nobj];
             for (int xyz=0;xyz<naxyz;xyz++) if (atlasBoundaryLabels[xyz]>0) {
@@ -2007,24 +2007,27 @@ public class ConditionalShapeSegmentationSlabs {
             for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
                double[][] likelihood = new double[nobj][nobj];
                for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
-                   // look for non-zero priors
-                   likelihood[obj1][obj2] = 0.0;
-                   
-                   // impose the leftout classes here
-                   if (cancelBackground && obj1==0 && obj2==0) {
-                        likelihood[obj1][obj2] = 0.0;
-                    } else if (cancelAll && obj1==obj2) {
-                        likelihood[obj1][obj2] = 0.0;
-                    } else {                   
-                       for (int best=0;best<nbest;best++) {
-                           if (spatialLabels[best][idmap[xyz]]==100*(obj1+1)+(obj2+1)) {
-                               // multiply nc times to balance prior and posterior
-                               //likelihood[obj1][obj2] = 1.0;
-                               likelihood[obj1][obj2] = spatialProbas[best][idmap[xyz]];
-                               best = nbest;
+                   // skip regions that don't have intensity relationships right away
+                   if (condpair[c][obj1][obj2]) {
+                       // look for non-zero priors
+                       likelihood[obj1][obj2] = 0.0;
+                       
+                       // impose the leftout classes here
+                       if (cancelBackground && obj1==0 && obj2==0) {
+                            likelihood[obj1][obj2] = 0.0;
+                        } else if (cancelAll && obj1==obj2) {
+                            likelihood[obj1][obj2] = 0.0;
+                        } else {                   
+                           for (int best=0;best<nbest;best++) {
+                               if (spatialLabels[best][idmap[xyz]]==100*(obj1+1)+(obj2+1)) {
+                                   // multiply nc times to balance prior and posterior
+                                   //likelihood[obj1][obj2] = 1.0;
+                                   likelihood[obj1][obj2] = spatialProbas[best][idmap[xyz]];
+                                   best = nbest;
+                               }
                            }
-                       }
-                       // use the skeleton as prior? not here, it's not used to restrict search space
+                           // use the skeleton as prior? not here, it's not used to restrict search space
+                        }
                    }
                    if (likelihood[obj1][obj2]>0) {
                        if (condpair[c][obj1][obj2]) {
@@ -2074,7 +2077,7 @@ public class ConditionalShapeSegmentationSlabs {
                     // remove best value
                     likelihood[best1][best2] = 0.0;
                 }
-             }
+            }
             if (rescaleIntensities) {
                 // rescale top % in each shape and intensity priors
                 Percentile measure = new Percentile();
@@ -2106,6 +2109,8 @@ public class ConditionalShapeSegmentationSlabs {
 		for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
             double[][] likelihood = new double[nobj][nobj];
             //System.out.print("contrasts: ");
+            // VERY SLOW : faster option using only the best ones instead? problem of correctly setting zero values
+            /*
             for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
                 likelihood[obj1][obj2] = 1.0;
                 int ncontrast = 0;
@@ -2128,6 +2133,32 @@ public class ConditionalShapeSegmentationSlabs {
                     }
                 }
                 likelihood[obj1][obj2] = FastMath.pow(likelihood[obj1][obj2], intensityImportance/ncontrast);
+            }*/
+            int[][] ncontrast = new int[nobj][nobj];
+            for (int c=0;c<nc;c++) {
+                for (int best=0;best<nbest;best++) {
+                    int obj1 = Numerics.floor(separateIntensLabels[c][best][idmap[xyz]]/100.0)-1;
+                    int obj2 = separateIntensLabels[c][best][idmap[xyz]]-100*(obj1+1)-1;
+                    
+                    // if we use all contrasts or if the right non-bg contrasts are used
+                    if (contrastList==null
+                         || (obj1>=nbg && contrastList[obj1-nbg][c]) 
+                         || (obj2>=nbg && contrastList[obj2-nbg][c])
+                         || (obj1<nbg && obj2<nbg) ) {
+                    
+                        if (ncontrast[obj1][obj2]==0) {
+                            likelihood[obj1][obj2] = separateIntensProbas[c][best][idmap[xyz]];
+                        } else {
+                            likelihood[obj1][obj2] *= separateIntensProbas[c][best][idmap[xyz]];
+                        }
+                        ncontrast[obj1][obj2]++;
+                    }
+                }
+            }
+            for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
+                if (likelihood[obj1][obj2]>0) {
+                    likelihood[obj1][obj2] = FastMath.pow(likelihood[obj1][obj2], intensityImportance/ncontrast[obj1][obj2]);
+                }
             }
             //System.out.print("\n");
             
