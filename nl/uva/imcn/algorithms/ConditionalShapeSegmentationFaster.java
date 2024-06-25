@@ -70,6 +70,9 @@ public class ConditionalShapeSegmentationFaster {
 	private float intensityImportance = 1.0f;
 	private float intensityBaseline = 0.1f;
 	
+	// same thing for the volume priors
+	private float volumeImportance = 1.0f;
+
 	// use only a subset of intensities per structure?
 	private boolean[][] contrastList = null;
 	
@@ -515,7 +518,10 @@ public class ConditionalShapeSegmentationFaster {
 
     public final void setIntensityImportancePrior(float val) { intensityImportance=val; }
     public final void setIntensityBaselinePrior(float val) { intensityBaseline=val; }
-	//
+
+    public final void setVolumeImportancePrior(float val) { volumeImportance=val; }
+
+    //
 	public final void setAtlasDimensions(int x, int y, int z) { nax=x; nay=y; naz=z; naxyz=nax*nay*naz; }
 	public final void setAtlasDimensions(int[] dim) { nax=dim[0]; nay=dim[1]; naz=dim[2]; naxyz=nax*nay*naz; }
 	
@@ -2611,7 +2617,7 @@ public class ConditionalShapeSegmentationFaster {
         System.out.println("posterior volumes: ");
         for (int obj=nbg;obj<nobj;obj++) {
             //double pvol = 0.5;
-            double pvol = FastMath.exp( -0.5*Numerics.square((FastMath.log(Numerics.max(1.0,voldata[obj]))-logVolMean[obj])/logVolStdv[obj]));
+            double pvol = FastMath.exp( -0.5*volumeImportance*Numerics.square((FastMath.log(Numerics.max(1.0,voldata[obj]))-logVolMean[obj])/logVolStdv[obj]));
             double logvolmean = (1.0-pvol)*logVolMean[obj]+pvol*FastMath.log(Numerics.max(1.0,voldata[obj]));
             double logvolstdv = FastMath.sqrt( (1.0-pvol)*( Numerics.square(logVolStdv[obj]) )
                                 + pvol*Numerics.square(logVolMean[obj]-FastMath.log(Numerics.max(1.0,voldata[obj]))) );
