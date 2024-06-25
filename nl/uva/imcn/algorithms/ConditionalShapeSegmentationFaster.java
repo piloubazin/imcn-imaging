@@ -63,8 +63,8 @@ public class ConditionalShapeSegmentationFaster {
 	private boolean scalePriors = true;
 	private boolean shiftPriors = false;
 	
-	// trust more the intensities when more are available?
-	private boolean averageIntensityPriors = true;
+	// trust more the intensities when more are available? yes
+	//private boolean averageIntensityPriors = true;
 	
 	// weight up or down intensities compared to spatial priors?
 	private float intensityImportance = 1.0f;
@@ -511,7 +511,7 @@ public class ConditionalShapeSegmentationFaster {
 	//public static final void setFollowSkeleton(boolean val) { skelParam=val; }
 	//public final void setCorrectSkeletonTopology(boolean val) { topoParam=val; }
 	//public final void setTopologyLUTdirectory(String val) { lutdir = val; }
-    public final void setAverageIntensityPriors(boolean val) { averageIntensityPriors=val; }
+    //public final void setAverageIntensityPriors(boolean val) { averageIntensityPriors=val; }
 
     public final void setIntensityImportancePrior(float val) { intensityImportance=val; }
     public final void setIntensityBaselinePrior(float val) { intensityBaseline=val; }
@@ -1705,7 +1705,7 @@ public class ConditionalShapeSegmentationFaster {
             double[][] likelihood = new double[nobj][nobj];
             //System.out.print("contrasts: ");
             // VERY SLOW : faster option using only the best ones instead? problem of correctly setting zero values
-            /* too slow? */
+            /* too slow?
             for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
                 likelihood[obj1][obj2] = 1.0;
                 int ncontrast = 0;
@@ -1728,7 +1728,7 @@ public class ConditionalShapeSegmentationFaster {
                     }
                 }
                 likelihood[obj1][obj2] = FastMath.pow(likelihood[obj1][obj2], intensityImportance/ncontrast);
-            }/* faster?
+            }/* faster? */
             int[][] ncontrast = new int[nobj][nobj];
             for (int c=0;c<nc;c++) {
                 for (int best=0;best<nbest;best++) {
@@ -1754,7 +1754,7 @@ public class ConditionalShapeSegmentationFaster {
                 if (likelihood[obj1][obj2]>0) {
                     likelihood[obj1][obj2] = FastMath.pow(likelihood[obj1][obj2], intensityImportance/ncontrast[obj1][obj2]);
                 }
-            }*/
+            }/**/
             //System.out.print("\n");
             
             for (int best=0;best<nbest;best++) {
@@ -1793,7 +1793,7 @@ public class ConditionalShapeSegmentationFaster {
 		combinedLabels = new int[nbest][ndata];
 		for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
 		    double[][] posteriors = new double[nobj][nobj];
-		    /* too slow? better to populate only the non-zero items */
+		    /* too slow? better to populate only the non-zero items 
 		    // seems OK, actually. The previous step is really the killer here
 		    for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
                 // look for non-zero priors
@@ -1828,15 +1828,15 @@ public class ConditionalShapeSegmentationFaster {
                         }
                     }
                     // now the intensity weights are computed beforehand, as the number of contrasts may vary per structure
-                    if (averageIntensityPriors) {
+                    //if (averageIntensityPriors) {
                         //posteriors[obj1][obj2] = posteriors[obj1][obj2]*FastMath.pow(intensPrior,intensityImportance/nc);
                         posteriors[obj1][obj2] = posteriors[obj1][obj2]*intensPrior;
-                    } else {
-                        //posteriors[obj1][obj2] = FastMath.pow(posteriors[obj1][obj2]*FastMath.pow(intensPrior,intensityImportance),2.0/(intensityImportance*nc+1.0));
-                        posteriors[obj1][obj2] = FastMath.pow(posteriors[obj1][obj2]*FastMath.pow(intensPrior,intensityImportance*nc),2.0/(intensityImportance*nc+1.0));
-                    }
+                    //} else {
+                    //    //posteriors[obj1][obj2] = FastMath.pow(posteriors[obj1][obj2]*FastMath.pow(intensPrior,intensityImportance),2.0/(intensityImportance*nc+1.0));
+                    //    posteriors[obj1][obj2] = FastMath.pow(posteriors[obj1][obj2]*FastMath.pow(intensPrior,intensityImportance*nc),2.0/(intensityImportance*nc+1.0));
+                    //}
                 }
-            }/* faster?
+            }/* faster? */
             // spatial prior
             for (int best=0;best<nbest;best++) {
                 int obj1 = Numerics.floor(spatialLabels[best][idmap[xyz]]/100.0)-1;
@@ -1856,17 +1856,9 @@ public class ConditionalShapeSegmentationFaster {
                 int obj2 = intensityLabels[best][idmap[xyz]]-100*(obj1+1)-1;
             
                 if (posteriors[obj1][obj2]>0) {
-                    double intensPrior = intensityProbas[best][idmap[xyz]];
-                    // now the intensity weights are computed beforehand, as the number of contrasts may vary per structure
-                    if (averageIntensityPriors) {
-                        //posteriors[obj1][obj2] = posteriors[obj1][obj2]*FastMath.pow(intensPrior,intensityImportance/nc);
-                        posteriors[obj1][obj2] = posteriors[obj1][obj2]*intensPrior;
-                    } else {
-                        //posteriors[obj1][obj2] = FastMath.pow(posteriors[obj1][obj2]*FastMath.pow(intensPrior,intensityImportance),2.0/(intensityImportance*nc+1.0));
-                        posteriors[obj1][obj2] = FastMath.pow(posteriors[obj1][obj2]*FastMath.pow(intensPrior,intensityImportance*nc),2.0/(intensityImportance*nc+1.0));
-                    }
+                    posteriors[obj1][obj2] = posteriors[obj1][obj2]*intensityProbas[best][idmap[xyz]];
                 }
-            }*/
+            }/**/
                     
             for (int best=0;best<nbest;best++) {
                 int best1=0;
