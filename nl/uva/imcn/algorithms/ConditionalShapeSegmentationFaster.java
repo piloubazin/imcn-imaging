@@ -2019,7 +2019,7 @@ public class ConditionalShapeSegmentationFaster {
         for (int obj=0;obj<nobj;obj++) {
             System.out.print("\n("+(obj+1)+"): ");
             double avol = 0.0;
-            for (int xyza=0;xyza<naxyz;xyza++) if (mask[xyza]) {
+            for (int xyza=0;xyza<naxyz;xyza++) {
                 // look for non-zero priors
                 for (int best=0;best<nbest;best++) {
                     if (origLabels[best][xyza]>100*(obj+1) && origLabels[best][xyza]<100*(obj+2)) {
@@ -2030,7 +2030,7 @@ public class ConditionalShapeSegmentationFaster {
             }
             System.out.print(avol+" -> ");
             double tvol = 0.0;
-            for (int xyzt=0;xyzt<ntxyz;xyzt++) if (mask[xyzt]) {
+            for (int xyzt=0;xyzt<ntxyz;xyzt++) {
                 // look for non-zero priors
                 for (int best=0;best<nbest;best++) {
                     if (targetLabels[best][xyzt]>100*(obj+1) && targetLabels[best][xyzt]<100*(obj+2)) {
@@ -2046,7 +2046,7 @@ public class ConditionalShapeSegmentationFaster {
         for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
             System.out.print("\n("+(obj1+1)+" | "+(obj2+1)+"): ");
             double avol = 0.0;
-            for (int xyza=0;xyza<naxyz;xyza++) if (mask[xyza]) {
+            for (int xyza=0;xyza<naxyz;xyza++) {
                 // look for non-zero priors
                 for (int best=0;best<nbest;best++) {
                     if (origLabels[best][xyza]==100*(obj1+1)+(obj2+1)) {
@@ -2057,7 +2057,7 @@ public class ConditionalShapeSegmentationFaster {
             }
             System.out.print(avol+" -> ");
             double tvol = 0.0;
-            for (int xyzt=0;xyzt<ntxyz;xyzt++) if (mask[xyzt]) {
+            for (int xyzt=0;xyzt<ntxyz;xyzt++) {
                 // look for non-zero priors
                 for (int best=0;best<nbest;best++) {
                     if (targetLabels[best][xyzt]==100*(obj1+1)+(obj2+1)) {
