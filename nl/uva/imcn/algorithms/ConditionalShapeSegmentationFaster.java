@@ -2011,9 +2011,6 @@ public class ConditionalShapeSegmentationFaster {
 	public final void mapAtlasVolumePriors() {
 	    
         System.out.println("(use transformed priors)");
-        trgcondmin = new double[ntc];
-        trgcondmax = new double[ntc];
-        trgcondhistogram = new double[ntc][nobj][nobj][nbins];
         
         // single object volume priors
         for (int obj=0;obj<nobj;obj++) {
