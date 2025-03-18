@@ -8,11 +8,17 @@ import nl.uva.imcn.libraries.ImageStatistics;
 import nl.uva.imcn.libraries.ObjectExtraction;
 import nl.uva.imcn.libraries.ObjectLabeling;
 import nl.uva.imcn.structures.BinaryHeapPair;
+import nl.uva.imcn.methods.VesselDiameterCostFunction2D;
 
 import org.apache.commons.math3.util.FastMath;
 import org.apache.commons.math3.stat.descriptive.rank.Percentile;
 import org.apache.commons.math3.special.Erf;
 //import org.apache.commons.math3.analysis.*;
+
+import org.apache.commons.math3.optim.nonlinear.scalar.GoalType;
+import org.apache.commons.math3.optim.nonlinear.scalar.ObjectiveFunction;
+import org.apache.commons.math3.optim.*;
+import org.apache.commons.math3.optim.nonlinear.scalar.noderiv.*;
 
 import java.util.BitSet;
 
@@ -109,6 +115,8 @@ public class LinearFiberMapping {
 	public final float[] getLengthImage() { return lengthImage;}
 	public final float[] getAngleImage() { return thetaImage;}
 	public final float[] getAnisotropyImage() { return aniImage;}
+	public final float[] getDiameterImage() { return diameterImage;}
+	public final float[] getPartialVolumeImage() { return pvImage;}
 
 	public void execute(){
 		BasicInfo.displayMessage("linear fiber mapping:\n");
@@ -473,6 +481,11 @@ public class LinearFiberMapping {
                 }
             }
 		}
+		if (estimateDiameter) {
+		    boolean[] obj = ObjectExtraction.objectFromImage(proba, nx,ny,1, 0.0f, ObjectExtraction.SUPERIOR);
+		
+		    estimateDiameter(inputImage, obj, maxscale, maxdirection, mask);    
+		}
 		
 		if (extend) {
             // expansion to neighboring background regions through binary heap
@@ -809,4 +822,305 @@ public class LinearFiberMapping {
 		return;
     }
 
+    
+    private final void estimateDiameter(float[] image, boolean[] object, int[] scaleMax, byte[] finalDirection, boolean[] maskCort) {
+		// 4. estimate diameters
+		System.out.println("Vessel Intensity \n");
+		// in and out vessels intensity initialisation
+		float Iin=0.0f;
+		int nIn=0;
+		float[][] inVal=new float[nx][ny];	
+		float minIn = 1e9f;
+		float maxIn = -1e9f;
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int id = x + nx*y;
+			inVal[x][y]=0.0f;
+			if(object[id] && scaleMax[id]>1){
+				Iin+=image[id];
+				inVal[x][y]=image[id];
+				nIn++;
+				if (image[id] > maxIn) maxIn = image[id];
+				if (image[id] < minIn) minIn = image[id];
+			}
+		}
+		Iin=Iin/(float)nIn;
+		
+		System.out.println("Ring \n");
+		boolean[] maskOut=new boolean[nx*ny];
+		boolean[] maskVote=new boolean[nx*ny];
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int id = x + nx*y;
+			maskOut[id]=false;
+			if(object[id]) maskVote[id]=true;
+			else maskVote[id]=false;
+		}		
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int xy = x + nx*y;
+			if(object[xy]){
+				float[] finalDir=directionVector(finalDirection[xy]);
+				for(int d=0;d<4;d++){
+					int rIn=3;
+					int rOut =5;
+					byte[] orthVector = directionNeighbor(d);					
+					float orthTest = finalDir[X]*orthVector[X]+finalDir[Y]*orthVector[Y];
+					if(orthTest*orthTest<1.0e-9f){
+						float dist= (float)FastMath.sqrt( orthVector[X]*orthVector[X]+orthVector[Y]*orthVector[Y] );
+						int s=1;
+						if(scaleMax[xy]>1){
+							rIn*=2;
+							rOut*=2;
+						}
+						while(dist<=rOut){	
+							if(x+s*orthVector[X]>=0 && x+s*orthVector[X]<nx && (y+s*orthVector[Y])>=0 && (y+s*orthVector[Y])<ny){
+								if(dist>rIn){
+									if(!object[x+s*orthVector[X]+nx*(y+s*orthVector[Y])])	maskOut[x+s*orthVector[X]+nx*(y+s*orthVector[Y])]=true;
+								}
+								else {
+									if(!object[x+s*orthVector[X]+nx*(y+s*orthVector[Y])])	maskVote[x+s*orthVector[X]+nx*(y+s*orthVector[Y])]=true;
+								}
+							}
+							if(x-s*orthVector[X]>=0 && x+s*orthVector[X]<nx && (y-s*orthVector[Y])>=0 && (y-s*orthVector[Y])<ny){
+								if(dist>rIn){
+									if(!object[x-s*orthVector[X]+nx*(y-s*orthVector[Y])])	maskOut[x-s*orthVector[X]+nx*(y-s*orthVector[Y])]=true;
+								}
+								else {
+									if(!object[x-s*orthVector[X]+nx*(y-s*orthVector[Y])])	maskVote[x-s*orthVector[X]+nx*(y-s*orthVector[Y])]=true;
+								}
+							}
+							s++;
+							dist= (float)FastMath.sqrt( orthVector[X]*orthVector[X]+orthVector[Y]*orthVector[Y])*(float)s;
+						}
+					}
+				}
+			}
+		}
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int xy = x + nx*y;
+			if(maskVote[xy]){
+				maskOut[xy]=false;
+			}
+		}
+				
+		System.out.println("Background Intensity \n");
+		float Iout=0.0f;
+		int nOut=0;
+		float minOut = 1e9f;
+		float maxOut = -1e9f;
+		float[][] outVal=new float[nx][ny];		
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int id = x + nx*y;
+			outVal[x][y]=0.0f;
+			if(maskOut[id]){
+				Iout+=image[id];
+				outVal[x][y]=image[id];
+				nOut++;
+				if (image[id] > maxOut) maxOut = image[id];
+				if (image[id] < minOut) minOut = image[id];
+			}
+		}
+		Iout=Iout/(float)nOut;
+		
+				
+		// in probability map
+		float[][] probaInImg=new float[nx][ny];
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int xy = x + nx*y;
+			if(maskCort[xy]){
+				//}
+				if(image[xy]>Iin){
+					probaInImg[x][y]=1.0f;
+				}
+				else if (image[xy]<Iout){
+					probaInImg[x][y]=0.0f;
+				}
+				else {
+					probaInImg[x][y]=(image[xy]-Iout)/(Iin-Iout);
+				}
+			}
+			else {
+				probaInImg[x][y]=0.0f;
+			}
+			
+		}
+
+		
+		// Estime diameter 
+			// Estime window size
+		System.out.println("Diameter profile\n");
+		float[][] diamEst= new float[nx][ny];
+		int[][] voisNbr= new int[nx][ny];
+		boolean[][] obj2=new boolean[nx*ny][5]; 
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int id = x + nx*y;
+			obj2[id][0]=false;
+			if(object[id]){
+				float[] finalDir=directionVector(finalDirection[id]);
+				diamEst[x][y]=0.0f;
+				int rIn=1;
+				int vois=0;
+				for (int i=-rIn;i<=rIn;i++) for (int j=-rIn;j<=rIn;j++) {
+					float dist= (float)FastMath.sqrt((float)i*i +(float)j*j);
+					if(dist<=rIn){
+						if(x+i<nx &&  x+i>=0 && y+j<ny &&  y+j>=0 ){
+							float orthTest=(float)i*finalDir[X]+(float)j*finalDir[Y];
+							orthTest=orthTest*orthTest;
+							if(orthTest<1.0e-9f){
+								vois++;
+								diamEst[x][y]+=probaInImg[x+i][y+j]; 	
+							}
+						}
+					}
+				}
+				diamEst[x][y]/=(float)vois; 
+				voisNbr[x][y]=vois;
+				if(diamEst[x][y]>0.5f) obj2[id][0]=true;
+			}		          
+		}
+		
+		float[][][] diamEst2= new float[nx][ny][4];
+		for(int s=1;s<5;s++){
+		System.out.println("Initial search "+s+"\n");
+		int rIn=1+s;
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int id = x + nx*y;
+			obj2[id][s]=false;
+			if(obj2[id][s-1]){
+				float[] finalDir=directionVector(finalDirection[id]);
+				diamEst2[x][y][s-1]=0.0f;
+
+				int vois=0;
+				for (int i=-rIn;i<=rIn;i++) for (int j=-rIn;j<=rIn;j++) {
+					float dist= (float)FastMath.sqrt((float)i*i +(float)j*j);
+					if(dist<=rIn){
+						if(x+i<nx &&  x+i>=0 && y+j<ny &&  y+j>=0 ){
+							float orthTest=(float)i*finalDir[X]+(float)j*finalDir[Y];
+							orthTest=orthTest*orthTest;
+							if(orthTest<1.0e-9f){
+								vois++;
+								diamEst2[x][y][s-1]+=probaInImg[x+i][y+j]; 	
+							}
+						}
+					}
+				}
+				diamEst2[x][y][s-1]/=(float)vois; 
+				voisNbr[x][y]=vois;
+				if(diamEst2[x][y][s-1]>0.5f) obj2[id][s]=true;
+			}		          
+		}
+		}
+			// Fit to model	
+		double[][] firstEst=new double[nx][ny];
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			firstEst[x][y]=0.0f;
+		}
+		double[][] pv=new double[nx][ny];
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			pv[x][y]=0.0f;	
+		}			
+		System.out.println("Optimization\n");
+		int wtOptim=0;
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int id=x+nx*y;
+			if(object[id]){
+				int rIn=1;
+				for(int s=1;s<5;s++){
+					if(obj2[id][s-1] ){			
+						rIn++;	
+					}			
+				}
+				
+				float[] finalDir=directionVector(finalDirection[id]);
+				float[] tan1=new float[2];
+			
+				boolean btan=true;
+				for(int d=0;d<4;d++){
+					if(btan){
+						tan1=directionVector(d);
+						float orthTest=(float)tan1[X]*finalDir[X]+(float)tan1[Y]*finalDir[Y];
+						orthTest=orthTest*orthTest;
+						if(orthTest<1.0e-9f){
+							btan=false;
+						}
+					}
+				}
+				
+				//System.out.print(".");
+		
+				VesselDiameterCostFunction2D jfct= new VesselDiameterCostFunction2D();
+				jfct.setImagesData(probaInImg,nx,ny);
+				jfct.setPointData(x,y, rIn,finalDir,  tan1);
+				
+				double[] init={0.0f,(double)rIn} ;
+				SimplexOptimizer optimizer= new SimplexOptimizer(1e-5,1e-10);
+				MaxEval max=new MaxEval(10000);
+				ObjectiveFunction g=new ObjectiveFunction(jfct);
+				
+				InitialGuess start=new InitialGuess(init);
+				MaxIter mIt = new MaxIter(200); 
+				double[] step={0.01f,0.01f};
+				NelderMeadSimplex simplex= new NelderMeadSimplex(step);
+				PointValuePair resultPair=optimizer.optimize(max,g, GoalType.MINIMIZE,start,simplex);
+				double[] result= resultPair.getPoint();
+				
+				firstEst[x][y]=FastMath.abs(result[1]);	
+				float maxDist= (float)rIn+0.5f;
+				if (firstEst[x][y]>maxDist) {
+					firstEst[x][y]=maxDist;	
+					wtOptim++;
+				} else {				
+					float xc=FastMath.round(result[0]*tan1[X]);
+					float yc=FastMath.round(result[0]*tan1[Y]);
+					for(int i=-rIn;i<=rIn;i++)for(int j=-rIn;j<=rIn;j++){	
+						if(x+i>=0 && x+i<nx && (y+j)>=0 && (y+j)<ny ){
+								float orthTest = finalDir[X]*(float)i+finalDir[Y]*(float)j;
+								if(orthTest*orthTest<=1e-6){
+								float dist= (float)FastMath.sqrt( ((float)i-xc)*((float)i-xc) +((float)j-yc)*((float)j-yc) );	
+								if(dist<=firstEst[x][y]-0.5f){
+									pv[x+i][y+j]=1;
+								}							
+								else if(dist<=firstEst[x][y]+0.5f){
+									pv[x+i][y+j]=FastMath.max(0.5f+firstEst[x][y]-dist,pv[x+i][y+j]);
+								}
+							}
+						}					
+					}					
+				}											
+			}
+		}
+
+		
+		// 4. grow the region around the vessel centers to fit the scale (pv modeling)
+		float[] pvol = new float[nx*ny];
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int xy = x + nx*y;
+			if (object[xy]) {
+				// when the diameter is smaller than the voxel, linear approx
+				pvol[xy] = Numerics.bounded((float)firstEst[x][y], 0.0f, 1.0f);
+				int nsc = Numerics.ceil(scaleMax[xy]/2.0f); // scale is diameter
+				for (int i=-nsc;i<=nsc;i++) for (int j=-nsc;j<=nsc;j++) {
+					if (x+i>=0 && x+i<nx && y+j>=0 && y+j<ny) {
+						float dist = (float)FastMath.sqrt(i*i+j*j);
+						// update the neighbor value for diameters above the voxel size
+						pvol[xy+i+j*nx] = Numerics.max(pvol[xy+i+j*nx], Numerics.bounded((float)firstEst[x][y]/2.0f+0.5f-dist, 0.0f, 1.0f));
+					}
+				}
+			}
+		}
+		
+		//PV map
+		pvImage = new float[nx*ny];
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int id = x + nx*y;
+			pvImage[id] = pvol[id];
+		}					
+
+		//Diameter map
+		diameterImage = new float[nx*ny];
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int id = x + nx*y;
+			if (object[id]) diameterImage[id] = (float)firstEst[x][y];
+		}	
+		
+        return;       
+    }
 }
