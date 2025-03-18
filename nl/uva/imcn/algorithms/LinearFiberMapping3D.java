@@ -2097,7 +2097,7 @@ public class LinearFiberMapping3D {
 		System.out.println("Diameter profile\n");
 		float[][][] diamEst= new float[nx][ny][nz];
 		int[][][] voisNbr= new int[nx][ny][nz];
-		boolean[][] obj2=new boolean[nxyz][5]; 
+		boolean[][] obj2=new boolean[nxyz][maxscaleParam]; 
 		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
 			int id = x + nx*y + nx*ny*z;
 			obj2[id][0]=false;
@@ -2125,8 +2125,8 @@ public class LinearFiberMapping3D {
 			}		          
 		}
 		
-		float[][][][] diamEst2= new float[nx][ny][nz][4];
-		for(int s=1;s<5;s++){
+		float[][][][] diamEst2= new float[nx][ny][nz][maxscaleParam-1];
+		for(int s=1;s<maxscaleParam;s++){
 		System.out.println("Initial search "+s+"\n");
 		int rIn=1+s;
 		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
@@ -2171,7 +2171,7 @@ public class LinearFiberMapping3D {
 			int id=x+nx*y+nx*ny*z;
 			if(object[id]){
 				int rIn=1;
-				for(int s=1;s<5;s++){
+				for(int s=1;s<maxscaleParam;s++){
 					if(obj2[id][s-1] ){			
 						rIn++;	
 					}			
