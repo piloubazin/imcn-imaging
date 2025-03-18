@@ -1273,7 +1273,7 @@ public class LinearFiberMapping {
 			    if (labels[id-nx]==lb) grady -= distance[id-nx];
 			    
 			    // remove everything with high gradient, see what's left?
-			    if (gradx*gradx+grady*grady<0.5) keep[id] = true;
+			    if (Numerics.max(gradx*gradx,grady*grady)<0.5) keep[id] = true;
 			 }
 		}
 		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
