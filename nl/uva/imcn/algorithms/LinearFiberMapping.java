@@ -753,7 +753,7 @@ public class LinearFiberMapping {
 
 		factor /= (float)ngbParam;
 		for (int t=0;t<iterParam;t++) {
-			BasicInfo.displayMessage("iterParamation "+(t+1)+": ");
+			BasicInfo.displayMessage("iteration "+(t+1)+": ");
 			float diff = 0.0f;
 			for (int xyz=0;xyz<nxyz;xyz++) if (proba[xyz]>0) {
 				float prev = diffused[xyz];
@@ -1266,20 +1266,20 @@ public class LinearFiberMapping {
 			if (distance[id]>0) {
 			    int lb = labels[id];
 			    float gradx = 0.0f;
-			    if (labels[id+1]==lb) gradx += distance[id+1];
-			    if (labels[id-1]==lb) gradx -= distance[id-1];
+			    if (labels[id+1]==lb) gradx += 0.5f*distance[id+1];
+			    if (labels[id-1]==lb) gradx -= 0.5f*distance[id-1];
 			    float grady = 0.0f;
-			    if (labels[id+nx]==lb) grady += distance[id+nx];
-			    if (labels[id-nx]==lb) grady -= distance[id-nx];
+			    if (labels[id+nx]==lb) grady += 0.5f*distance[id+nx];
+			    if (labels[id-nx]==lb) grady -= 0.5f*distance[id-nx];
 			    float gradxy = 0.0f;
-			    if (labels[id+1+nx]==lb) gradxy += distance[id+1+nx];
-			    if (labels[id-1-nx]==lb) gradxy -= distance[id-1-nx];
+			    if (labels[id+1+nx]==lb) gradxy += 0.5f*distance[id+1+nx];
+			    if (labels[id-1-nx]==lb) gradxy -= 0.5f*distance[id-1-nx];
 			    float gradyx = 0.0f;
-			    if (labels[id+1-nx]==lb) gradxy += distance[id+1-nx];
-			    if (labels[id-1+nx]==lb) gradxy -= distance[id-1+nx];
+			    if (labels[id+1-nx]==lb) gradxy += 0.5f*distance[id+1-nx];
+			    if (labels[id-1+nx]==lb) gradxy -= 0.5f*distance[id-1+nx];
 			    
 			    // remove everything with high gradient, see what's left?
-			    if (Numerics.max(gradx*gradx,grady*grady,gradxy*gradxy,gradyx*gradyx)<threshold) keep[id] = true;
+			    if (Numerics.max(gradx*gradx,grady*grady,gradxy*gradxy,gradyx*gradyx)<threshold*threshold) keep[id] = true;
 			 }
 		}
 		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
