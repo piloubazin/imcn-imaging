@@ -2040,7 +2040,7 @@ public class ConditionalShapeSegmentationFaster {
             logVolMean[obj] += FastMath.log(Numerics.max(1.0,tvol)) - FastMath.log(Numerics.max(1.0,avol));
             logVolStdv[obj] += FastMath.log(Numerics.max(1.0,tvol)) - FastMath.log(Numerics.max(1.0,avol));
         }
-        /* skip for now, not relevant anymore
+        /* skip for now, not relevant anymore, and verrrry slow
         for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
             System.out.print("\n("+(obj1+1)+" | "+(obj2+1)+"): ");
             double avol = 0.0;
