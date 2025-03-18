@@ -1258,7 +1258,30 @@ public class LinearFiberMapping {
 				}
 			}			
 		}
-
+		
+		// find regions with low gradient as center?
+		boolean[] keep = new boolean[nx*ny];
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int id = x + nx*y;
+			if (distance[id]>0) {
+			    int lb = labels[id];
+			    float gradx = 0.0f;
+			    if (labels[id+1]==lb) gradx += distance[id+1];
+			    if (labels[id-1]==lb) gradx -= distance[id-1];
+			    float grady = 0.0f;
+			    if (labels[id+nx]==lb) grady += distance[id+nx];
+			    if (labels[id-nx]==lb) grady -= distance[id-nx];
+			    
+			    // remove everything with high gradient, see what's left?
+			    if (gradx*gradx+grady*grady<0.5) keep[id] = true;
+			 }
+		}
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int id = x + nx*y;
+		    if (!keep[id]) {
+		        distance[id] = -distance[id];
+		    }
+		}
 		//Diameter map
 		diameterImage = distance;
 		
