@@ -234,6 +234,7 @@ public class LinearFiberMapping {
         }
         
         boolean[] used = new boolean[nx*ny];
+        proba = new float[nx*ny];
         while (ordering.isNotEmpty()) {
             float maxpropag = ordering.getFirst();
             int xM = ordering.getFirstId1();
@@ -473,7 +474,7 @@ public class LinearFiberMapping {
                         theta[lx[n]+nx*ly[n]] = (float)(thetaL*180.0/FastMath.PI);
                         length[lx[n]+nx*ly[n]] = lengthL;
                         ani[lx[n]+nx*ly[n]] = aniL;
-                        propag[lx[n]+nx*ly[n]] = meanp;
+                        proba[lx[n]+nx*ly[n]] = meanp;
                     }
                 } else {
                     // remove single point detections (artefacts)
@@ -482,6 +483,7 @@ public class LinearFiberMapping {
             }
 		}
 		if (estimateDiameter) {
+		    // only look at points that are kept!
 		    boolean[] obj = ObjectExtraction.objectFromImage(proba, nx,ny,1, 0.0f, ObjectExtraction.SUPERIOR);
 		
 		    estimateDiameter(inputImage, obj, maxscale, maxdirection, mask);    

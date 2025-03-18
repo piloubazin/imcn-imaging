@@ -475,11 +475,12 @@ public class LinearFiberMapping3D {
                     }
                 } else {
                     // remove single point detections (artefacts)
-                    //propag[lx[0]+nx*ly[0]+nx*ny*lz[0]] = 0.0f;
+                    propag[lx[0]+nx*ly[0]+nx*ny*lz[0]] = 0.0f;
                 }
             }
 		}
 		if (estimateDiameter) {
+		    // only look at points that are keptlines
 		    boolean[] obj = ObjectExtraction.objectFromImage(proba, nx,ny,nz, 0.0f, ObjectExtraction.SUPERIOR);
 		
 		    estimateDiameter(inputImage, obj, maxscale, maxdirection, mask);    
