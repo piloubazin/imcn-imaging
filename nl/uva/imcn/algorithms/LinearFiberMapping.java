@@ -1190,7 +1190,7 @@ public class LinearFiberMapping {
 			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny);
 			        if (mask[ngb] && labels[ngb]==0) {
                         float newpv = (float)FastMath.exp(-0.5*(image[ngb]-avg[lb])*(image[ngb]-avg[lb])/var[lb]);
-                        if (pv>=threshold) heap.addValue(newpv, ngb, lb);
+                        if (newpv>=threshold) heap.addValue(newpv, ngb, lb);
                     }
                 }
             }
@@ -1336,7 +1336,7 @@ public class LinearFiberMapping {
 		// correct for starting point of distances
 		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
 			int id = x + nx*y;
-		    if (radius[id]>0) {
+		    if (pvmap[id]>0) {
 		        radius[id] = Numerics.max(radius[id]-0.5f,0.5f);
 		    }
 		}
