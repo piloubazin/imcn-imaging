@@ -1333,11 +1333,11 @@ public class LinearFiberMapping {
 			}			
 		}
 		
-		// correct for starting point of distances
+		// correct for starting point of distances, turn into diameter
 		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
 			int id = x + nx*y;
 		    if (pvmap[id]>0) {
-		        radius[id] = Numerics.max(radius[id]-0.5f,0.5f);
+		        radius[id] = 2.0f*Numerics.max(radius[id]-0.5f,0.5f);
 		    }
 		}
 		// correct for background stuff, based on model of 2D vessel as a line
