@@ -487,6 +487,7 @@ public class LinearFiberMapping {
 		    //boolean[] obj = ObjectExtraction.objectFromImage(proba, nx,ny,1, 0.0f, ObjectExtraction.SUPERIOR);
 		
 		    //estimateDiameter(inputImage, obj, maxscale, maxdirection, mask);    
+		    probaImage = propag;
 		    growPartialVolume(inputImage, lines, mask, 0.5f);
 		}
 		
@@ -1195,9 +1196,6 @@ public class LinearFiberMapping {
             }
         }
 		
-		//PV map
-		pvImage = pvmap;
-		
 		//debug: compute average probability instead
 		float[] pavg = new float[nx*ny];
 		float[] psum = new float[nx*ny];
@@ -1230,9 +1228,9 @@ public class LinearFiberMapping {
 			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny);
 			        if (labels[ngb]==0) {
                         boundary=true;
-                        heap.addValue(pvmap[id], id, labels[id]);
                     }
                 }
+                if (boundary) heap.addValue(pvmap[id], id, labels[id]);
             }
         }
 
@@ -1334,13 +1332,25 @@ public class LinearFiberMapping {
 				}
 			}			
 		}
-		/*
+		
+		// correct for starting point of distances
 		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
 			int id = x + nx*y;
-		    if (!keep[id]) {
-		        distance[id] = -distance[id];
+		    if (radius[id]>0) {
+		        radius[id] = Numerics.max(radius[id]-0.5f,0.5f);
 		    }
-		}*/
+		}
+		// correct for background stuff, based on model of 2D vessel as a line
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int id = x + nx*y;
+		    if (probaImage[id]<2.0f*threshold/3.0f) {
+		        radius[id] = 0.0f;
+		        pvmap[id] = 0.0f;
+		    }
+		}
+		//PV map
+		pvImage = pvmap;
+		
 		//Diameter map
 		diameterImage = radius;
 		
