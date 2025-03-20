@@ -1198,6 +1198,21 @@ public class LinearFiberMapping {
 		//PV map
 		pvImage = pvmap;
 		
+		//debug: compute average probability instead
+		float[] pavg = new float[nx*ny];
+		float[] psum = new float[nx*ny];
+		for (int id=0;id<nx*ny;id++) if (labels[id]>0) {
+		    int lb = labels[id];
+		    pavg[lb] += probaImage[id];
+		    psum[lb] ++;
+		}
+		for (int id=0;id<nx*ny;id++) if (labels[id]>0) {
+		    int lb = labels[id];
+		    if (psum[lb]>0) {
+                probaImage[id] = pavg[lb]/psum[lb];
+            }
+        }
+		
 		// Diameter from skeleton
 		float[] nbdist = new float[4];
 		boolean[] nbflag = new boolean[4];
@@ -1279,17 +1294,55 @@ public class LinearFiberMapping {
 			    if (labels[id-1+nx]==lb) gradxy -= 0.5f*distance[id-1+nx];
 			    
 			    // remove everything with high gradient, see what's left?
-			    if (Numerics.max(gradx*gradx,grady*grady,gradxy*gradxy,gradyx*gradyx)<threshold*threshold) keep[id] = true;
+			    if (Numerics.max(gradx*gradx,grady*grady,gradxy*gradxy,gradyx*gradyx)<=threshold*threshold) keep[id] = true;
 			 }
 		}
+		// grow inregion back from skeleton points
+		float[] radius = new float[nx*ny];
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int id = x + nx*y;
+			if (keep[id]) {
+			    radius[id] = distance[id];
+			    for (byte k = 0; k<4; k++) {
+			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny);
+			        if (labels[ngb]==labels[id] && !keep[ngb]) {
+                        heap.addValue(Numerics.abs(distance[ngb]-distance[id]), ngb, id);
+                    }
+                }
+            }
+        }
+
+		while (heap.isNotEmpty()) {
+        	// extract point with minimum distance
+        	float dist = heap.getFirst();
+        	int id = heap.getFirstId1();
+        	int prev = heap.getFirstId2();
+        	
+        	heap.removeFirst();
+
+        	// if more than nmgdm labels have been found already, this is done
+			if (!keep[id]) {
+			    radius[id] = radius[prev];
+			    keep[id]=true;
+			    
+			    // find new neighbors
+			    for (byte k = 0; k<4; k++) {
+			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny);
+			        if (labels[ngb]==labels[id] && !keep[ngb]) {
+                        heap.addValue(dist+Numerics.abs(distance[ngb]-distance[id]), ngb, id);
+                    }
+				}
+			}			
+		}
+		/*
 		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
 			int id = x + nx*y;
 		    if (!keep[id]) {
 		        distance[id] = -distance[id];
 		    }
-		}
+		}*/
 		//Diameter map
-		diameterImage = distance;
+		diameterImage = radius;
 		
         return;       
     }
