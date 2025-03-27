@@ -227,7 +227,7 @@ public class LinearFiberMapping3D {
 		float pmax = ImageStatistics.robustMaximum(proba, 0.000001f, 6, nx, ny, nz);
 		if (pmax>0) for (int xyz=0;xyz<nxyz;xyz++) proba[xyz] = Numerics.min(proba[xyz]/pmax,1.0f);
 		
-	// 3. diffuse the data to neighboring structures
+		// 3. diffuse the data to neighboring structures
 		BasicInfo.displayMessage("...diffusion\n");
 		
 		float[] propag = new float[nxyz];
@@ -295,7 +295,8 @@ public class LinearFiberMapping3D {
                 for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) for (int dz=-1;dz<=1;dz++) {
                     int ngb = xM+dx + nx*(yM+dy) + nx*ny*(zM+dz);
                     if (mask[ngb] && !used[ngb]) {
-                        if (propag[ngb]>detectionThreshold && propag[ngb]>stoppingRatio*maxpropag) {
+                        //if (propag[ngb]>detectionThreshold && propag[ngb]>stoppingRatio*maxpropag) {
+                        if (propag[ngb]>stoppingRatio*maxpropag) {
                             heap.addValue(propag[ngb], xM+dx, yM+dy, zM+dz);
                         }
                     }
@@ -380,7 +381,8 @@ public class LinearFiberMapping3D {
                         for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) for (int dz=-1;dz<=1;dz++) {
                             int ngb = lx[nl]+dx + nx*(ly[nl]+dy) + nx*ny*(lz[nl]+dz);
                             if (mask[ngb] && !used[ngb]) {
-                                if (propag[ngb]>detectionThreshold && propag[ngb]>stoppingRatio*maxpropag) {
+                                //if (propag[ngb]>detectionThreshold && propag[ngb]>stoppingRatio*maxpropag) {
+                                if (propag[ngb]>stoppingRatio*maxpropag) {
                                     heap.addValue(propag[ngb], lx[nl]+dx, ly[nl]+dy, lz[nl]+dz);
                                 }
                             }
