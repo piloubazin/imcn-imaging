@@ -8,6 +8,7 @@ import nl.uva.imcn.libraries.ImageStatistics;
 import nl.uva.imcn.libraries.ObjectExtraction;
 import nl.uva.imcn.libraries.ObjectLabeling;
 import nl.uva.imcn.structures.BinaryHeap3D;
+import nl.uva.imcn.structures.BinaryHeapPair;
 import nl.uva.imcn.methods.VesselDiameterCostFunction;
 
 import org.apache.commons.math3.util.FastMath;
@@ -226,18 +227,7 @@ public class LinearFiberMapping3D {
 		float pmax = ImageStatistics.robustMaximum(proba, 0.000001f, 6, nx, ny, nz);
 		if (pmax>0) for (int xyz=0;xyz<nxyz;xyz++) proba[xyz] = Numerics.min(proba[xyz]/pmax,1.0f);
 		
-		/*
-		// generate a direction vector??
-		float[][] direction = new float[3][nxyz];
-		for (int xyz=0;xyz<nxyz;xyz++){
-			float[] vec = directionVector(maxdirection[xyz]);
-			direction[X][xyz] = vec[X];
-			direction[Y][xyz] = vec[Y];
-			direction[Z][xyz] = vec[Z];
-		}
-		*/
-		
-		// 3. diffuse the data to neighboring structures
+	// 3. diffuse the data to neighboring structures
 		BasicInfo.displayMessage("...diffusion\n");
 		
 		float[] propag = new float[nxyz];
@@ -481,9 +471,11 @@ public class LinearFiberMapping3D {
 		}
 		if (estimateDiameter) {
 		    // only look at points that are keptlines
-		    boolean[] obj = ObjectExtraction.objectFromImage(proba, nx,ny,nz, 0.0f, ObjectExtraction.SUPERIOR);
+		    //boolean[] obj = ObjectExtraction.objectFromImage(proba, nx,ny,nz, 0.0f, ObjectExtraction.SUPERIOR);
 		
-		    estimateDiameter(inputImage, obj, maxscale, maxdirection, mask);    
+		    //estimateDiameter(inputImage, obj, maxscale, maxdirection, mask);    
+		    probaImage = propag;
+		    growPartialVolume(inputImage, lines, mask, 0.5f);
 		}
 		
 		if (extend) {
@@ -2276,4 +2268,301 @@ public class LinearFiberMapping3D {
 		
         return;       
     }
+    
+   private final void growPartialVolume(float[] image, int[] labels, boolean[] mask, float threshold) {
+        
+        
+		// mean,stdev inside each vessel
+		System.out.println("Vessel Intensity \n");
+		float[] avg = new float[nx*ny*nz];
+		float[] sum = new float[nx*ny*nz];
+		for (int id=0;id<nx*ny*nz;id++) if (labels[id]>0) {
+			int lb = labels[id];
+			avg[lb] += image[id];
+			sum[lb] += 1.0f;
+		}
+		for (int id=0;id<nx*ny*nz;id++) if (sum[id]>0) {
+		    avg[id] /= sum[id];
+		}
+		float[] var = new float[nx*ny*nz];
+		for (int id=0;id<nx*ny*nz;id++) if (labels[id]>0) {
+			int lb = labels[id];
+			var[lb] += (image[id]-avg[lb])*(image[id]-avg[lb]);
+		}
+		for (int id=0;id<nx*ny*nz;id++) if (sum[id]>1.0f) {
+		    var[id] /= (sum[id]-1.0f);
+		}
+		
+		// grow region with p(mu,sigma)>0.5
+		BinaryHeapPair heap = new BinaryHeapPair(nx*ny+ny*nz+nz*nx, nx*ny+ny*nz+nz*nx, BinaryHeapPair.MAXTREE);
+		
+        // simply order them by size instead?
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+			int id = x + nx*y + nx*ny*z;
+			if (labels[id]>0) {
+			    for (byte k = 0; k<6; k++) {
+			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny, nz);
+			        if (mask[ngb] && labels[ngb]==0) {
+                        int lb = labels[id];
+                        float pv = (float)FastMath.exp(-0.5*(image[ngb]-avg[lb])*(image[ngb]-avg[lb])/var[lb]);
+                        if (pv>=threshold) heap.addValue(pv, ngb, lb);
+                    }
+                }
+            }
+        }
+        
+        float[] pvmap = new float[nx*ny*nz];
+        for (int id=0;id<nx*ny*nz;id++) if (labels[id]>0) {
+            pvmap[id] = 1.0f;
+        }
+        while (heap.isNotEmpty()) {
+            float pv = heap.getFirst();
+            int id = heap.getFirstId1();
+            int lb = heap.getFirstId2();
+            
+            heap.removeFirst();
+            
+            if (pvmap[id]==0) {
+                // add to current pv
+                pvmap[id] = pv;
+                labels[id] = lb;
+                
+                for (byte k = 0; k<6; k++) {
+			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny, nz);
+			        if (mask[ngb] && labels[ngb]==0) {
+                        float newpv = (float)FastMath.exp(-0.5*(image[ngb]-avg[lb])*(image[ngb]-avg[lb])/var[lb]);
+                        if (newpv>=threshold) heap.addValue(newpv, ngb, lb);
+                    }
+                }
+            }
+        }
+		
+		//debug: compute average probability instead
+		float[] pavg = new float[nx*ny*nz];
+		float[] psum = new float[nx*ny*nz];
+		for (int id=0;id<nx*ny*nz;id++) if (labels[id]>0) {
+		    int lb = labels[id];
+		    pavg[lb] += probaImage[id];
+		    psum[lb] ++;
+		}
+		for (int id=0;id<nx*ny*nz;id++) if (labels[id]>0) {
+		    int lb = labels[id];
+		    if (psum[lb]>0) {
+                probaImage[id] = pavg[lb]/psum[lb];
+            }
+        }
+		
+		// Diameter from skeleton
+		float[] nbdist = new float[6];
+		boolean[] nbflag = new boolean[6];
+		
+		heap = new BinaryHeapPair(nx*ny+ny*nz+nz*nx, nx*ny+ny*nz+nz*nx, BinaryHeapPair.MINTREE);
+		heap.reset();
+		
+		// initialize the heap from boundaries
+		float[] distance = new float[nx*ny*nz];
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+			int id = x + nx*y + nx*ny*z;
+			if (labels[id]>0) {
+			    boolean boundary=false;
+			    for (byte k = 0; k<6 && !boundary; k++) {
+			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny, nz);
+			        if (labels[ngb]==0) {
+                        boundary=true;
+                    }
+                }
+                if (boundary) heap.addValue(pvmap[id], id, labels[id]);
+            }
+        }
+
+		while (heap.isNotEmpty()) {
+        	// extract point with minimum distance
+        	float dist = heap.getFirst();
+        	int id = heap.getFirstId1();
+        	int lb = heap.getFirstId2();
+        	
+        	heap.removeFirst();
+
+        	// if more than nmgdm labels have been found already, this is done
+			if (distance[id]==0) {
+			    distance[id] = dist;
+			    
+			    // find new neighbors
+			    for (byte k = 0; k<6; k++) {
+			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny, nz);
+				
+			        // must be in outside the object or its processed neighborhood
+			        if (labels[ngb]==lb && distance[ngb]==0) {
+			            // compute new distance based on processed neighbors for the same object
+			            for (byte l=0; l<6; l++) {
+			                nbdist[l] = -1.0f;
+			                nbflag[l] = false;
+			                int ngb2 = fastMarchingNeighborIndex(l, ngb, nx, ny, nz);
+			                // note that there is at most one value used here
+			                if (labels[ngb2]==lb && distance[ngb2]>0) {
+			                    nbdist[l] = distance[ngb2];
+			                    nbflag[l] = true;
+			                }			
+			            }
+			            float newdist = minimumMarchingDistance(nbdist, nbflag);
+					
+			            // add to the heap
+			            heap.addValue(newdist,ngb,lb);
+			        }
+				}
+			}			
+		}
+		
+		// find regions with low gradient as center?
+		boolean[] keep = new boolean[nx*ny*nz];
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+			int id = x + nx*y + nx*ny*z;
+			if (distance[id]>0) {
+			    int lb = labels[id];
+			    float gradx = 0.0f;
+			    if (labels[id+1]==lb) gradx += 0.5f*distance[id+1];
+			    if (labels[id-1]==lb) gradx -= 0.5f*distance[id-1];
+			    float grady = 0.0f;
+			    if (labels[id+nx]==lb) grady += 0.5f*distance[id+nx];
+			    if (labels[id-nx]==lb) grady -= 0.5f*distance[id-nx];
+			    float gradz = 0.0f;
+			    if (labels[id+nx*ny]==lb) gradz += 0.5f*distance[id+nx*ny];
+			    if (labels[id-nx*ny]==lb) gradz -= 0.5f*distance[id-nx*ny];
+			    float gradxy = 0.0f;
+			    if (labels[id+1+nx]==lb) gradxy += 0.5f*distance[id+1+nx];
+			    if (labels[id-1-nx]==lb) gradxy -= 0.5f*distance[id-1-nx];
+			    float gradyz = 0.0f;
+			    if (labels[id+nx+nx*ny]==lb) gradyz += 0.5f*distance[id+nx+nx*ny];
+			    if (labels[id-nx-nx*ny]==lb) gradyz -= 0.5f*distance[id-nx-nx*ny];
+			    float gradzx = 0.0f;
+			    if (labels[id+nx*ny+1]==lb) gradzx += 0.5f*distance[id+nx*ny+1];
+			    if (labels[id-nx*ny-1]==lb) gradzx -= 0.5f*distance[id-nx*ny-1];
+			    float gradyx = 0.0f;
+			    if (labels[id+1-nx]==lb) gradyx += 0.5f*distance[id+1-nx];
+			    if (labels[id-1+nx]==lb) gradyx -= 0.5f*distance[id-1+nx];
+			    float gradzy = 0.0f;
+			    if (labels[id+nx-nx*ny]==lb) gradzy += 0.5f*distance[id+nx-nx*ny];
+			    if (labels[id-nx+nx*ny]==lb) gradzy -= 0.5f*distance[id-nx+nx*ny];
+			    float gradxz = 0.0f;
+			    if (labels[id+nx*ny-1]==lb) gradxz += 0.5f*distance[id+nx*ny-1];
+			    if (labels[id-nx*ny+1]==lb) gradxz -= 0.5f*distance[id-nx*ny+1];
+			    
+			    // remove everything with high gradient, see what's left?
+			    if (Numerics.max(gradx*gradx,grady*grady,gradxy*gradxy,gradyz*gradyz,gradzx*gradzx,gradyx*gradyx,gradzy*gradzy,gradxz*gradxz)<=threshold*threshold) keep[id] = true;
+			 }
+		}
+		// grow inregion back from skeleton points
+		float[] radius = new float[nx*ny*nz];
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+			int id = x + nx*y + nx*ny*z;
+			if (keep[id]) {
+			    radius[id] = distance[id];
+			    for (byte k = 0; k<6; k++) {
+			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny, nz);
+			        if (labels[ngb]==labels[id] && !keep[ngb]) {
+                        heap.addValue(Numerics.abs(distance[ngb]-distance[id]), ngb, id);
+                    }
+                }
+            }
+        }
+
+		while (heap.isNotEmpty()) {
+        	// extract point with minimum distance
+        	float dist = heap.getFirst();
+        	int id = heap.getFirstId1();
+        	int prev = heap.getFirstId2();
+        	
+        	heap.removeFirst();
+
+        	// if more than nmgdm labels have been found already, this is done
+			if (!keep[id]) {
+			    radius[id] = radius[prev];
+			    keep[id]=true;
+			    
+			    // find new neighbors
+			    for (byte k = 0; k<6; k++) {
+			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny, nz);
+			        if (labels[ngb]==labels[id] && !keep[ngb]) {
+                        heap.addValue(dist+Numerics.abs(distance[ngb]-distance[id]), ngb, id);
+                    }
+				}
+			}			
+		}
+		
+		// correct for starting point of distances, turn into diameter
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+			int id = x + nx*y + nx*ny*z;
+		    if (pvmap[id]>0) {
+		        radius[id] = 2.0f*Numerics.max(radius[id]-0.5f,0.5f);
+		    }
+		}
+		// correct for background stuff, based on model of 2D vessel as a line
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+			int id = x + nx*y + nx*ny*z;
+		    if (probaImage[id]<2.0f*threshold/3.0f) {
+		        radius[id] = 0.0f;
+		        pvmap[id] = 0.0f;
+		    }
+		}
+		//PV map
+		pvImage = pvmap;
+		
+		//Diameter map
+		diameterImage = radius;
+		
+        return;       
+    }
+
+    public static final int fastMarchingNeighborIndex(byte d, int id, int nx, int ny, int nz) {
+		switch (d) {
+			case 0		: 	return id+1; 		
+			case 1		:	return id-1;
+			case 2		:	return id+nx;
+			case 3		:	return id-nx;
+			case 4		:	return id+nx*ny;
+			case 5		:	return id-nx*ny;
+			default		:	return id;
+		}
+	}
+
+    private static final float minimumMarchingDistance(float[] val, boolean[] flag) {
+
+        float s, s2; // s = a + b +c; s2 = a*a + b*b +c*c
+        float tmp;
+        int count;
+        s = 0;
+        s2 = 0;
+        
+        count = 0;
+
+        for (int n=0; n<6; n+=2) {
+			if (flag[n] && flag[n+1]) {
+				tmp = Numerics.min(val[n], val[n+1]); // Take the smaller one if both are processed
+				s += tmp;
+				s2 += tmp*tmp;
+				count++;
+			} else if (flag[n]) {
+				s += val[n]; // Else, take the processed one
+				s2 += val[n]*val[n];
+				count++;
+			} else if (flag[n+1]) {
+				s += val[n+1];
+				s2 += val[n+1]*val[n+1];
+				count++;
+			}
+		}
+         // count must be greater than zero since there must be at least one processed pt in the neighbors
+        if (count==0) System.err.print("!");
+        if (s*s-count*(s2-1.0)<0) {
+        	System.err.print(":");
+        	tmp = 0;
+        	for (int n=0;n<6;n++) if (flag[n]) tmp = Numerics.max(tmp,val[n]);
+        	for (int n=0;n<6;n++) if (flag[n]) tmp = Numerics.min(tmp,val[n]);
+        } else {
+			tmp = (s + (float)FastMath.sqrt((double) (s*s-count*(s2-1.0))))/count;
+		}
+        // The larger root
+        return tmp;
+    }
+
 }

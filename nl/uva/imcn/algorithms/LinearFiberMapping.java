@@ -1288,8 +1288,8 @@ public class LinearFiberMapping {
 			    if (labels[id+1+nx]==lb) gradxy += 0.5f*distance[id+1+nx];
 			    if (labels[id-1-nx]==lb) gradxy -= 0.5f*distance[id-1-nx];
 			    float gradyx = 0.0f;
-			    if (labels[id+1-nx]==lb) gradxy += 0.5f*distance[id+1-nx];
-			    if (labels[id-1+nx]==lb) gradxy -= 0.5f*distance[id-1+nx];
+			    if (labels[id+1-nx]==lb) gradyx += 0.5f*distance[id+1-nx];
+			    if (labels[id-1+nx]==lb) gradyx -= 0.5f*distance[id-1+nx];
 			    
 			    // remove everything with high gradient, see what's left?
 			    if (Numerics.max(gradx*gradx,grady*grady,gradxy*gradxy,gradyx*gradyx)<=threshold*threshold) keep[id] = true;
