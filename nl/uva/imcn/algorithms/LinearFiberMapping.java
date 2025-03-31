@@ -488,7 +488,7 @@ public class LinearFiberMapping {
 		
 		    //estimateDiameter(inputImage, obj, maxscale, maxdirection, mask);    
 		    probaImage = propag;
-		    growPartialVolume(inputImage, lines, mask, 0.5f);
+		    growPartialVolume(inputImage, lines, mask, detectionThreshold);
 		}
 		
 		if (extend) {
@@ -1164,7 +1164,7 @@ public class LinearFiberMapping {
 			        if (mask[ngb] && labels[ngb]==0) {
                         int lb = labels[id];
                         float pv = (float)FastMath.exp(-0.5*(image[ngb]-avg[lb])*(image[ngb]-avg[lb])/var[lb]);
-                        if (pv>=threshold) heap.addValue(pv, ngb, lb);
+                        if (pv>=0.5f) heap.addValue(pv, ngb, lb);
                     }
                 }
             }
@@ -1190,7 +1190,7 @@ public class LinearFiberMapping {
 			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny);
 			        if (mask[ngb] && labels[ngb]==0) {
                         float newpv = (float)FastMath.exp(-0.5*(image[ngb]-avg[lb])*(image[ngb]-avg[lb])/var[lb]);
-                        if (newpv>=threshold) heap.addValue(newpv, ngb, lb);
+                        if (newpv>=0.5f) heap.addValue(newpv, ngb, lb);
                     }
                 }
             }
@@ -1292,7 +1292,7 @@ public class LinearFiberMapping {
 			    if (labels[id-1+nx]==lb) gradyx -= 0.5f*distance[id-1+nx];
 			    
 			    // remove everything with high gradient, see what's left?
-			    if (Numerics.max(gradx*gradx,grady*grady,gradxy*gradxy,gradyx*gradyx)<=threshold*threshold) keep[id] = true;
+			    if (Numerics.max(gradx*gradx,grady*grady,gradxy*gradxy,gradyx*gradyx)<=0.25f) keep[id] = true;
 			 }
 		}
 		// grow inregion back from skeleton points

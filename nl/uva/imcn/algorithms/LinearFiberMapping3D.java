@@ -477,7 +477,7 @@ public class LinearFiberMapping3D {
 		
 		    //estimateDiameter(inputImage, obj, maxscale, maxdirection, mask);    
 		    probaImage = propag;
-		    growPartialVolume(inputImage, lines, mask, 0.5f);
+		    growPartialVolume(inputImage, lines, mask, detectionThreshold);
 		}
 		
 		if (extend) {
@@ -2307,7 +2307,7 @@ public class LinearFiberMapping3D {
 			        if (mask[ngb] && labels[ngb]==0) {
                         int lb = labels[id];
                         float pv = (float)FastMath.exp(-0.5*(image[ngb]-avg[lb])*(image[ngb]-avg[lb])/var[lb]);
-                        if (pv>=threshold) heap.addValue(pv, ngb, lb);
+                        if (pv>=0.5f) heap.addValue(pv, ngb, lb);
                     }
                 }
             }
@@ -2333,7 +2333,7 @@ public class LinearFiberMapping3D {
 			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny, nz);
 			        if (mask[ngb] && labels[ngb]==0) {
                         float newpv = (float)FastMath.exp(-0.5*(image[ngb]-avg[lb])*(image[ngb]-avg[lb])/var[lb]);
-                        if (newpv>=threshold) heap.addValue(newpv, ngb, lb);
+                        if (newpv>=0.5f) heap.addValue(newpv, ngb, lb);
                     }
                 }
             }
@@ -2450,7 +2450,7 @@ public class LinearFiberMapping3D {
 			    if (labels[id-nx*ny+1]==lb) gradxz -= 0.5f*distance[id-nx*ny+1];
 			    
 			    // remove everything with high gradient, see what's left?
-			    if (Numerics.max(gradx*gradx,grady*grady,gradxy*gradxy,gradyz*gradyz,gradzx*gradzx,gradyx*gradyx,gradzy*gradzy,gradxz*gradxz)<=threshold*threshold) keep[id] = true;
+			    if (Numerics.max(gradx*gradx,grady*grady,gradxy*gradxy,gradyz*gradyz,gradzx*gradzx,gradyx*gradyx,gradzy*gradzy,gradxz*gradxz)<=0.25f) keep[id] = true;
 			 }
 		}
 		// grow inregion back from skeleton points
@@ -2498,10 +2498,10 @@ public class LinearFiberMapping3D {
 		        radius[id] = 2.0f*Numerics.max(radius[id]-0.5f,0.5f);
 		    }
 		}
-		// correct for background stuff, based on model of 2D vessel as a line
+		// correct for background stuff, based on simplistic model of 3D vessel as a line
 		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
 			int id = x + nx*y + nx*ny*z;
-		    if (probaImage[id]<2.0f*threshold/3.0f) {
+		    if (probaImage[id]<3.0f*threshold/5.0f) {
 		        radius[id] = 0.0f;
 		        pvmap[id] = 0.0f;
 		    }
