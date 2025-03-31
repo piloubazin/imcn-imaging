@@ -2501,7 +2501,7 @@ public class LinearFiberMapping3D {
 		// correct for background stuff, based on simplistic model of 3D vessel as a line
 		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
 			int id = x + nx*y + nx*ny*z;
-		    if (probaImage[id]<3.0f*threshold/5.0f) {
+		    if (probaImage[id]<5.0f*threshold/9.0f) {
 		        radius[id] = 0.0f;
 		        pvmap[id] = 0.0f;
 		    }
