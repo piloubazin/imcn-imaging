@@ -37,6 +37,7 @@ public class LinearFiberMapping {
 	private int ngbParam = 4;
 	private int iterParam = 100;
 	private float maxdiffParam = 0.001f;
+	private boolean skipDetection = false;
 	
 	private float detectionThreshold = 0.01f;
 	private float maxLineDist = 1.0f;
@@ -94,6 +95,7 @@ public class LinearFiberMapping {
 	public final void setNeighborhoodSize(int val) { ngbParam = val; }
 	public final void setMaxIterations(int val) { iterParam = val; }
 	public final void setMaxDifference(float val) { maxdiffParam = val; }
+	public final void setSkipDetection(boolean val) { skipDetection = val; }
 		
 	public final void setDetectionThreshold(float val) { detectionThreshold = val; }
 	public final void setMaxLineDistance(float val) { maxLineDist = val; }
@@ -140,79 +142,84 @@ public class LinearFiberMapping {
 			if (inputImage[id]<minI) minI = inputImage[id];
 		}
 		
-		// normalize, invert inputImage if looking for dark features
-		BasicInfo.displayMessage("...normalize intensities (detection: "+brightParam+")\n");
-		for (int xyz=0;xyz<nxyz;xyz++) {
-			if (brightParam.equals("bright"))
-				inputImage[xyz] = (inputImage[xyz]-minI)/(maxI-minI);
-			else if (brightParam.equals("dark"))
-				inputImage[xyz] = (maxI-inputImage[xyz])/(maxI-minI);
-			else 
-				inputImage[xyz] = (inputImage[xyz]-minI)/(maxI-minI);
-		}
-		boolean unidirectional = true;
-		if (brightParam.equals("both")) unidirectional = false;
+		float[] propag = null;
+		if (skipDetection) {
+		    propag = inputImage;
+		} else {
 		
-		// Compute filter at different scales
-		// new filter response from raw inputImage		
-		float[] maxresponse = new float[nxyz];
-		byte[] maxdirection = new byte[nxyz];
-		int[] maxscale = new int[nxyz];
-		
-		if (minscaleParam==0) {
-            BasicInfo.displayMessage("...first filter response\n");
+            // normalize, invert inputImage if looking for dark features
+            BasicInfo.displayMessage("...normalize intensities (detection: "+brightParam+")\n");
+            for (int xyz=0;xyz<nxyz;xyz++) {
+                if (brightParam.equals("bright"))
+                    inputImage[xyz] = (inputImage[xyz]-minI)/(maxI-minI);
+                else if (brightParam.equals("dark"))
+                    inputImage[xyz] = (maxI-inputImage[xyz])/(maxI-minI);
+                else 
+                    inputImage[xyz] = (inputImage[xyz]-minI)/(maxI-minI);
+            }
+            boolean unidirectional = true;
+            if (brightParam.equals("both")) unidirectional = false;
             
-            directionFromRecursiveRidgeFilter1D(inputImage, mask, maxresponse, maxdirection, unidirectional);
-        }
-        
-		for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
-			if (maxresponse[xyz]>0) {
-				maxscale[xyz] = 0;
-			} else {
-				maxscale[xyz] = -1;
-			}
+            // Compute filter at different scales
+            // new filter response from raw inputImage		
+            float[] maxresponse = new float[nxyz];
+            byte[] maxdirection = new byte[nxyz];
+            int[] maxscale = new int[nxyz];
+            
+            if (minscaleParam==0) {
+                BasicInfo.displayMessage("...first filter response\n");
+                
+                directionFromRecursiveRidgeFilter1D(inputImage, mask, maxresponse, maxdirection, unidirectional);
+            }
+            
+            for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
+                if (maxresponse[xyz]>0) {
+                    maxscale[xyz] = 0;
+                } else {
+                    maxscale[xyz] = -1;
+                }
+            }
+            for (int i=Numerics.max(minscaleParam-1,0);i<maxscaleParam;i++) {
+                float scale = 1.0f+i;
+                float[] smoothed = new float[nxyz];
+    
+                BasicInfo.displayMessage("...filter response at scale "+scale+"\n");
+            
+                // Gaussian Kernel
+                float[][] G = ImageFilters.separableGaussianKernel2D(scale/L2N2,scale/L2N2);
+                    
+                // smoothed inputImage
+                smoothed = ImageFilters.separableConvolution2D(inputImage,nx,ny,nz,G); 
+    
+                byte[] direction = new byte[nxyz];
+                float[] response = new float[nxyz];
+                directionFromRecursiveRidgeFilter1D(smoothed, mask, response, direction, unidirectional);
+                
+                //Combine scales: keep maximum response
+                for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
+                    if (response[xyz]>maxresponse[xyz]) {
+                        maxresponse[xyz] = response[xyz];
+                        maxdirection[xyz] = direction[xyz];
+                        maxscale[xyz] = (1+i);
+                    }
+                }
+            }
+            
+            // Equalize histogram (Exp Median)
+            BasicInfo.displayMessage("...normalization into probabilities\n");
+            float[] proba = new float[nxyz];
+            probabilityFromRecursiveRidgeFilter(maxresponse, proba);	
+            
+            
+            // rescale the probability response
+            float pmax = ImageStatistics.robustMaximum(proba, 0.000001f, 6, nx, ny, nz);
+            if (pmax>0) for (int xyz=0;xyz<nxyz;xyz++) proba[xyz] = Numerics.min(proba[xyz]/pmax,1.0f);
+            
+            // 3. diffuse the data to neighboring structures
+            BasicInfo.displayMessage("...diffusion\n");
+            
+            propag = probabilisticDiffusion1D(proba, maxdirection, ngbParam, maxdiffParam, simscaleParam, difffactorParam, iterParam);
 		}
-		for (int i=Numerics.max(minscaleParam-1,0);i<maxscaleParam;i++) {
-			float scale = 1.0f+i;
-			float[] smoothed = new float[nxyz];
-
-			BasicInfo.displayMessage("...filter response at scale "+scale+"\n");
-		
-			// Gaussian Kernel
-			float[][] G = ImageFilters.separableGaussianKernel2D(scale/L2N2,scale/L2N2);
-				
-			// smoothed inputImage
-			smoothed = ImageFilters.separableConvolution2D(inputImage,nx,ny,nz,G); 
-
-			byte[] direction = new byte[nxyz];
-			float[] response = new float[nxyz];
-			directionFromRecursiveRidgeFilter1D(smoothed, mask, response, direction, unidirectional);
-			
-			//Combine scales: keep maximum response
-			for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
-				if (response[xyz]>maxresponse[xyz]) {
-					maxresponse[xyz] = response[xyz];
-					maxdirection[xyz] = direction[xyz];
-					maxscale[xyz] = (1+i);
-				}
-			}
-		}
-		
-		// Equalize histogram (Exp Median)
-		BasicInfo.displayMessage("...normalization into probabilities\n");
-		float[] proba = new float[nxyz];
-		probabilityFromRecursiveRidgeFilter(maxresponse, proba);	
-		
-		
-		// rescale the probability response
-		float pmax = ImageStatistics.robustMaximum(proba, 0.000001f, 6, nx, ny, nz);
-		if (pmax>0) for (int xyz=0;xyz<nxyz;xyz++) proba[xyz] = Numerics.min(proba[xyz]/pmax,1.0f);
-		
-		// 3. diffuse the data to neighboring structures
-		BasicInfo.displayMessage("...diffusion\n");
-		
-		float[] propag = new float[nxyz];
-		propag = probabilisticDiffusion1D(proba, maxdirection, ngbParam, maxdiffParam, simscaleParam, difffactorParam, iterParam);
 		
 		// 4. Estimate groupings / linear fits?
 		BasicInfo.displayMessage("...line groupings\n");
@@ -234,7 +241,7 @@ public class LinearFiberMapping {
         }
         
         boolean[] used = new boolean[nx*ny];
-        proba = new float[nx*ny];
+        float[] proba = new float[nx*ny];
         while (ordering.isNotEmpty()) {
             float maxpropag = ordering.getFirst();
             int xM = ordering.getFirstId1();
