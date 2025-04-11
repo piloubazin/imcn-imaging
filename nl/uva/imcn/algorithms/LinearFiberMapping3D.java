@@ -42,7 +42,7 @@ public class LinearFiberMapping3D {
 	
 	private float detectionThreshold = 0.01f;
 	private float maxLineDist = 1.0f;
-	private boolean extend = true;
+	private boolean extend = false;
 	private float stoppingRatio = 0.1f;
 	private float extendRatio = 0.5f;
 	
@@ -168,7 +168,7 @@ public class LinearFiberMapping3D {
 		    
             // normalize, invert inputImage if looking for dark features
             BasicInfo.displayMessage("...normalize intensities (detection: "+brightParam+")\n");
-            for (int xyz=0;xyz<nxyz;xyz++) {
+            for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
                 if (brightParam.equals("bright"))
                     inputImage[xyz] = (inputImage[xyz]-minI)/(maxI-minI);
                 else if (brightParam.equals("dark"))
@@ -208,7 +208,7 @@ public class LinearFiberMapping3D {
                 float[][] G = ImageFilters.separableGaussianKernel(scale/L2N2,scale/L2N2,scale/L2N2);
                     
                 // smoothed inputImage
-                smoothed = ImageFilters.separableConvolution(inputImage,nx,ny,nz,G); 
+                smoothed = ImageFilters.separableMaskedConvolution(inputImage,mask,nx,ny,nz,G); 
     
                 byte[] direction = new byte[nxyz];
                 float[] response = new float[nxyz];
@@ -302,8 +302,8 @@ public class LinearFiberMapping3D {
                 for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) for (int dz=-1;dz<=1;dz++) {
                     int ngb = xM+dx + nx*(yM+dy) + nx*ny*(zM+dz);
                     if (mask[ngb] && !used[ngb]) {
-                        //if (propag[ngb]>detectionThreshold && propag[ngb]>stoppingRatio*maxpropag) {
-                        if (propag[ngb]>stoppingRatio*maxpropag) {
+                        if (propag[ngb]>detectionThreshold && propag[ngb]>stoppingRatio*maxpropag) {
+                        //if (propag[ngb]>stoppingRatio*maxpropag) {
                             heap.addValue(propag[ngb], xM+dx, yM+dy, zM+dz);
                         }
                     }
@@ -388,8 +388,8 @@ public class LinearFiberMapping3D {
                         for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) for (int dz=-1;dz<=1;dz++) {
                             int ngb = lx[nl]+dx + nx*(ly[nl]+dy) + nx*ny*(lz[nl]+dz);
                             if (mask[ngb] && !used[ngb]) {
-                                //if (propag[ngb]>detectionThreshold && propag[ngb]>stoppingRatio*maxpropag) {
-                                if (propag[ngb]>stoppingRatio*maxpropag) {
+                                if (propag[ngb]>detectionThreshold && propag[ngb]>stoppingRatio*maxpropag) {
+                                //if (propag[ngb]>stoppingRatio*maxpropag) {
                                     heap.addValue(propag[ngb], lx[nl]+dx, ly[nl]+dy, lz[nl]+dz);
                                 }
                             }
@@ -2338,12 +2338,17 @@ public class LinearFiberMapping3D {
                 
                 for (byte k = 0; k<6; k++) {
 			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny, nz);
-			        if (mask[ngb] && labels[ngb]==0) {
+			        //if (mask[ngb] && labels[ngb]==0) {
+                    if (mask[ngb] && pvmap[ngb]==0) {
                         float newpv = (float)FastMath.exp(-0.5*(image[ngb]-avg[lb])*(image[ngb]-avg[lb])/var[lb]);
                         if (newpv>=0.5f) heap.addValue(newpv, ngb, lb);
                     }
                 }
             }
+        }
+        // fix label leakage (???)
+        for (int id=0;id<nx*ny*nz;id++) if (pvmap[id]==0) {
+            labels[id] = 0;
         }
 		
 		//debug: compute average probability instead
