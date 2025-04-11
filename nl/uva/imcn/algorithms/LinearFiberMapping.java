@@ -44,7 +44,7 @@ public class LinearFiberMapping {
 	private float detectionThreshold = 0.01f;
 	private float maxLineDist = 1.0f;
 	private boolean extend = true;
-	private float stoppingRatio = 0.1f;
+	private float stoppingThreshold = 0.1f;
 	private float extendRatio = 0.5f;
 	
 	private boolean estimateDiameter = false;
@@ -104,7 +104,7 @@ public class LinearFiberMapping {
 	public final void setDetectionThreshold(float val) { detectionThreshold = val; }
 	public final void setMaxLineDistance(float val) { maxLineDist = val; }
 	public final void setExtendResult(boolean val) { extend = val; }
-	public final void setInclusionRatio(float val) { stoppingRatio = val; }
+	public final void setInclusionThreshold(float val) { stoppingThreshold = val; }
 	public final void setExtendRatio(float val) { extendRatio = val; }
 
 	public final void setEstimateDiameter(boolean val) { estimateDiameter = val; }
@@ -281,7 +281,7 @@ public class LinearFiberMapping {
                 for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) {
                     int ngb = xM+dx + nx*(yM+dy);
                     if (mask[ngb] && !used[ngb]) {
-                        if (propag[ngb]>detectionThreshold || propag[ngb]>stoppingRatio*maxpropag) {
+                        if (propag[ngb]>stoppingThreshold) {
                             heap.addValue(propag[ngb], xM+dx, yM+dy);
                         }
                     }
@@ -345,7 +345,7 @@ public class LinearFiberMapping {
                         for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) {
                             int ngb = lx[nl]+dx + nx*(ly[nl]+dy);
                             if (mask[ngb] && !used[ngb]) {
-                                if (propag[ngb]>detectionThreshold || propag[ngb]>stoppingRatio*maxpropag) {
+                                if (propag[ngb]>stoppingThreshold) {
                                     heap.addValue(propag[ngb], lx[nl]+dx, ly[nl]+dy);
                                 }
                             }
