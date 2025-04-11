@@ -8,11 +8,17 @@ import nl.uva.imcn.libraries.ImageStatistics;
 import nl.uva.imcn.libraries.ObjectExtraction;
 import nl.uva.imcn.libraries.ObjectLabeling;
 import nl.uva.imcn.structures.BinaryHeapPair;
+import nl.uva.imcn.methods.VesselDiameterCostFunction2D;
 
 import org.apache.commons.math3.util.FastMath;
 import org.apache.commons.math3.stat.descriptive.rank.Percentile;
 import org.apache.commons.math3.special.Erf;
 //import org.apache.commons.math3.analysis.*;
+
+import org.apache.commons.math3.optim.nonlinear.scalar.GoalType;
+import org.apache.commons.math3.optim.nonlinear.scalar.ObjectiveFunction;
+import org.apache.commons.math3.optim.*;
+import org.apache.commons.math3.optim.nonlinear.scalar.noderiv.*;
 
 import java.util.BitSet;
 
@@ -31,6 +37,7 @@ public class LinearFiberMapping {
 	private int ngbParam = 4;
 	private int iterParam = 100;
 	private float maxdiffParam = 0.001f;
+	private boolean skipDetection = false;
 	
 	private float detectionThreshold = 0.01f;
 	private float maxLineDist = 1.0f;
@@ -38,11 +45,15 @@ public class LinearFiberMapping {
 	private float stoppingRatio = 0.1f;
 	private float extendRatio = 0.5f;
 	
+	private boolean estimateDiameter = false;
+	
 	private float[] probaImage;
 	private int[] lineImage;
 	private float[] lengthImage;
 	private float[] aniImage;
 	private float[] thetaImage;
+	private float[] pvImage;
+	private float[] diameterImage;
 	
 	// global variables
 	private int nx, ny, nz, nc, nxyz;
@@ -84,13 +95,16 @@ public class LinearFiberMapping {
 	public final void setNeighborhoodSize(int val) { ngbParam = val; }
 	public final void setMaxIterations(int val) { iterParam = val; }
 	public final void setMaxDifference(float val) { maxdiffParam = val; }
+	public final void setSkipDetection(boolean val) { skipDetection = val; }
 		
 	public final void setDetectionThreshold(float val) { detectionThreshold = val; }
 	public final void setMaxLineDistance(float val) { maxLineDist = val; }
 	public final void setExtendResult(boolean val) { extend = val; }
 	public final void setInclusionRatio(float val) { stoppingRatio = val; }
 	public final void setExtendRatio(float val) { extendRatio = val; }
-		
+
+	public final void setEstimateDiameter(boolean val) { estimateDiameter = val; }
+	
 	// set generic inputs	
 	public final void setDimensions(int x, int y, int z) { nx=x; ny=y; nz=z; nxyz=nx*ny*nz; }
 	public final void setDimensions(int[] dim) { nx=dim[0]; ny=dim[1]; nz=dim[2]; nxyz=nx*ny*nz; }
@@ -103,6 +117,8 @@ public class LinearFiberMapping {
 	public final float[] getLengthImage() { return lengthImage;}
 	public final float[] getAngleImage() { return thetaImage;}
 	public final float[] getAnisotropyImage() { return aniImage;}
+	public final float[] getDiameterImage() { return diameterImage;}
+	public final float[] getPartialVolumeImage() { return pvImage;}
 
 	public void execute(){
 		BasicInfo.displayMessage("linear fiber mapping:\n");
@@ -126,79 +142,84 @@ public class LinearFiberMapping {
 			if (inputImage[id]<minI) minI = inputImage[id];
 		}
 		
-		// normalize, invert inputImage if looking for dark features
-		BasicInfo.displayMessage("...normalize intensities (detection: "+brightParam+")\n");
-		for (int xyz=0;xyz<nxyz;xyz++) {
-			if (brightParam.equals("bright"))
-				inputImage[xyz] = (inputImage[xyz]-minI)/(maxI-minI);
-			else if (brightParam.equals("dark"))
-				inputImage[xyz] = (maxI-inputImage[xyz])/(maxI-minI);
-			else 
-				inputImage[xyz] = (inputImage[xyz]-minI)/(maxI-minI);
-		}
-		boolean unidirectional = true;
-		if (brightParam.equals("both")) unidirectional = false;
+		float[] propag = null;
+		if (skipDetection) {
+		    propag = inputImage;
+		} else {
 		
-		// Compute filter at different scales
-		// new filter response from raw inputImage		
-		float[] maxresponse = new float[nxyz];
-		byte[] maxdirection = new byte[nxyz];
-		int[] maxscale = new int[nxyz];
-		
-		if (minscaleParam==0) {
-            BasicInfo.displayMessage("...first filter response\n");
+            // normalize, invert inputImage if looking for dark features
+            BasicInfo.displayMessage("...normalize intensities (detection: "+brightParam+")\n");
+            for (int xyz=0;xyz<nxyz;xyz++) {
+                if (brightParam.equals("bright"))
+                    inputImage[xyz] = (inputImage[xyz]-minI)/(maxI-minI);
+                else if (brightParam.equals("dark"))
+                    inputImage[xyz] = (maxI-inputImage[xyz])/(maxI-minI);
+                else 
+                    inputImage[xyz] = (inputImage[xyz]-minI)/(maxI-minI);
+            }
+            boolean unidirectional = true;
+            if (brightParam.equals("both")) unidirectional = false;
             
-            directionFromRecursiveRidgeFilter1D(inputImage, mask, maxresponse, maxdirection, unidirectional);
-        }
-        
-		for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
-			if (maxresponse[xyz]>0) {
-				maxscale[xyz] = 0;
-			} else {
-				maxscale[xyz] = -1;
-			}
+            // Compute filter at different scales
+            // new filter response from raw inputImage		
+            float[] maxresponse = new float[nxyz];
+            byte[] maxdirection = new byte[nxyz];
+            int[] maxscale = new int[nxyz];
+            
+            if (minscaleParam==0) {
+                BasicInfo.displayMessage("...first filter response\n");
+                
+                directionFromRecursiveRidgeFilter1D(inputImage, mask, maxresponse, maxdirection, unidirectional);
+            }
+            
+            for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
+                if (maxresponse[xyz]>0) {
+                    maxscale[xyz] = 0;
+                } else {
+                    maxscale[xyz] = -1;
+                }
+            }
+            for (int i=Numerics.max(minscaleParam-1,0);i<maxscaleParam;i++) {
+                float scale = 1.0f+i;
+                float[] smoothed = new float[nxyz];
+    
+                BasicInfo.displayMessage("...filter response at scale "+scale+"\n");
+            
+                // Gaussian Kernel
+                float[][] G = ImageFilters.separableGaussianKernel2D(scale/L2N2,scale/L2N2);
+                    
+                // smoothed inputImage
+                smoothed = ImageFilters.separableConvolution2D(inputImage,nx,ny,nz,G); 
+    
+                byte[] direction = new byte[nxyz];
+                float[] response = new float[nxyz];
+                directionFromRecursiveRidgeFilter1D(smoothed, mask, response, direction, unidirectional);
+                
+                //Combine scales: keep maximum response
+                for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
+                    if (response[xyz]>maxresponse[xyz]) {
+                        maxresponse[xyz] = response[xyz];
+                        maxdirection[xyz] = direction[xyz];
+                        maxscale[xyz] = (1+i);
+                    }
+                }
+            }
+            
+            // Equalize histogram (Exp Median)
+            BasicInfo.displayMessage("...normalization into probabilities\n");
+            float[] proba = new float[nxyz];
+            probabilityFromRecursiveRidgeFilter(maxresponse, proba);	
+            
+            
+            // rescale the probability response
+            float pmax = ImageStatistics.robustMaximum(proba, 0.000001f, 6, nx, ny, nz);
+            if (pmax>0) for (int xyz=0;xyz<nxyz;xyz++) proba[xyz] = Numerics.min(proba[xyz]/pmax,1.0f);
+            
+            // 3. diffuse the data to neighboring structures
+            BasicInfo.displayMessage("...diffusion\n");
+            
+            propag = probabilisticDiffusion1D(proba, maxdirection, ngbParam, maxdiffParam, simscaleParam, difffactorParam, iterParam);
 		}
-		for (int i=Numerics.max(minscaleParam-1,0);i<maxscaleParam;i++) {
-			float scale = 1.0f+i;
-			float[] smoothed = new float[nxyz];
-
-			BasicInfo.displayMessage("...filter response at scale "+scale+"\n");
-		
-			// Gaussian Kernel
-			float[][] G = ImageFilters.separableGaussianKernel2D(scale/L2N2,scale/L2N2);
-				
-			// smoothed inputImage
-			smoothed = ImageFilters.separableConvolution2D(inputImage,nx,ny,nz,G); 
-
-			byte[] direction = new byte[nxyz];
-			float[] response = new float[nxyz];
-			directionFromRecursiveRidgeFilter1D(smoothed, mask, response, direction, unidirectional);
-			
-			//Combine scales: keep maximum response
-			for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
-				if (response[xyz]>maxresponse[xyz]) {
-					maxresponse[xyz] = response[xyz];
-					maxdirection[xyz] = direction[xyz];
-					maxscale[xyz] = (1+i);
-				}
-			}
-		}
-		
-		// Equalize histogram (Exp Median)
-		BasicInfo.displayMessage("...normalization into probabilities\n");
-		float[] proba = new float[nxyz];
-		probabilityFromRecursiveRidgeFilter(maxresponse, proba);	
-		
-		
-		// rescale the probability response
-		float pmax = ImageStatistics.robustMaximum(proba, 0.000001f, 6, nx, ny, nz);
-		if (pmax>0) for (int xyz=0;xyz<nxyz;xyz++) proba[xyz] = Numerics.min(proba[xyz]/pmax,1.0f);
-		
-		// 3. diffuse the data to neighboring structures
-		BasicInfo.displayMessage("...diffusion\n");
-		
-		float[] propag = new float[nxyz];
-		propag = probabilisticDiffusion1D(proba, maxdirection, ngbParam, maxdiffParam, simscaleParam, difffactorParam, iterParam);
 		
 		// 4. Estimate groupings / linear fits?
 		BasicInfo.displayMessage("...line groupings\n");
@@ -220,6 +241,7 @@ public class LinearFiberMapping {
         }
         
         boolean[] used = new boolean[nx*ny];
+        float[] proba = new float[nx*ny];
         while (ordering.isNotEmpty()) {
             float maxpropag = ordering.getFirst();
             int xM = ordering.getFirstId1();
@@ -459,7 +481,7 @@ public class LinearFiberMapping {
                         theta[lx[n]+nx*ly[n]] = (float)(thetaL*180.0/FastMath.PI);
                         length[lx[n]+nx*ly[n]] = lengthL;
                         ani[lx[n]+nx*ly[n]] = aniL;
-                        propag[lx[n]+nx*ly[n]] = meanp;
+                        proba[lx[n]+nx*ly[n]] = meanp;
                     }
                 } else {
                     // remove single point detections (artefacts)
@@ -467,6 +489,15 @@ public class LinearFiberMapping {
                 }
             }
 		}
+		if (estimateDiameter) {
+		    // only look at points that are kept!
+		    //boolean[] obj = ObjectExtraction.objectFromImage(proba, nx,ny,1, 0.0f, ObjectExtraction.SUPERIOR);
+		
+		    //estimateDiameter(inputImage, obj, maxscale, maxdirection, mask);    
+		    probaImage = propag;
+		    growPartialVolume(inputImage, lines, mask, detectionThreshold);
+		}
+		
 		if (extend) {
             // expansion to neighboring background regions through binary heap
             ordering.reset();
@@ -730,7 +761,7 @@ public class LinearFiberMapping {
 
 		factor /= (float)ngbParam;
 		for (int t=0;t<iterParam;t++) {
-			BasicInfo.displayMessage("iterParamation "+(t+1)+": ");
+			BasicInfo.displayMessage("iteration "+(t+1)+": ");
 			float diff = 0.0f;
 			for (int xyz=0;xyz<nxyz;xyz++) if (proba[xyz]>0) {
 				float prev = diffused[xyz];
@@ -800,6 +831,587 @@ public class LinearFiberMapping {
 		}
 		
 		return;
+    }
+
+    
+    private final void estimateDiameter(float[] image, boolean[] object, int[] scaleMax, byte[] finalDirection, boolean[] maskCort) {
+		// 4. estimate diameters
+		System.out.println("Vessel Intensity \n");
+		// in and out vessels intensity initialisation
+		float Iin=0.0f;
+		int nIn=0;
+		float[][] inVal=new float[nx][ny];	
+		float minIn = 1e9f;
+		float maxIn = -1e9f;
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int id = x + nx*y;
+			inVal[x][y]=0.0f;
+			if(object[id] && scaleMax[id]>1){
+				Iin+=image[id];
+				inVal[x][y]=image[id];
+				nIn++;
+				if (image[id] > maxIn) maxIn = image[id];
+				if (image[id] < minIn) minIn = image[id];
+			}
+		}
+		Iin=Iin/(float)nIn;
+		
+		System.out.println("Ring \n");
+		boolean[] maskOut=new boolean[nx*ny];
+		boolean[] maskVote=new boolean[nx*ny];
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int id = x + nx*y;
+			maskOut[id]=false;
+			if(object[id]) maskVote[id]=true;
+			else maskVote[id]=false;
+		}		
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int xy = x + nx*y;
+			if(object[xy]){
+				float[] finalDir=directionVector(finalDirection[xy]);
+				for(int d=0;d<4;d++){
+					int rIn=3;
+					int rOut =5;
+					byte[] orthVector = directionNeighbor(d);					
+					float orthTest = finalDir[X]*orthVector[X]+finalDir[Y]*orthVector[Y];
+					if(orthTest*orthTest<1.0e-9f){
+						float dist= (float)FastMath.sqrt( orthVector[X]*orthVector[X]+orthVector[Y]*orthVector[Y] );
+						int s=1;
+						if(scaleMax[xy]>1){
+							rIn*=2;
+							rOut*=2;
+						}
+						while(dist<=rOut){	
+							if(x+s*orthVector[X]>=0 && x+s*orthVector[X]<nx && (y+s*orthVector[Y])>=0 && (y+s*orthVector[Y])<ny){
+								if(dist>rIn){
+									if(!object[x+s*orthVector[X]+nx*(y+s*orthVector[Y])])	maskOut[x+s*orthVector[X]+nx*(y+s*orthVector[Y])]=true;
+								}
+								else {
+									if(!object[x+s*orthVector[X]+nx*(y+s*orthVector[Y])])	maskVote[x+s*orthVector[X]+nx*(y+s*orthVector[Y])]=true;
+								}
+							}
+							if(x-s*orthVector[X]>=0 && x+s*orthVector[X]<nx && (y-s*orthVector[Y])>=0 && (y-s*orthVector[Y])<ny){
+								if(dist>rIn){
+									if(!object[x-s*orthVector[X]+nx*(y-s*orthVector[Y])])	maskOut[x-s*orthVector[X]+nx*(y-s*orthVector[Y])]=true;
+								}
+								else {
+									if(!object[x-s*orthVector[X]+nx*(y-s*orthVector[Y])])	maskVote[x-s*orthVector[X]+nx*(y-s*orthVector[Y])]=true;
+								}
+							}
+							s++;
+							dist= (float)FastMath.sqrt( orthVector[X]*orthVector[X]+orthVector[Y]*orthVector[Y])*(float)s;
+						}
+					}
+				}
+			}
+		}
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int xy = x + nx*y;
+			if(maskVote[xy]){
+				maskOut[xy]=false;
+			}
+		}
+				
+		System.out.println("Background Intensity \n");
+		float Iout=0.0f;
+		int nOut=0;
+		float minOut = 1e9f;
+		float maxOut = -1e9f;
+		float[][] outVal=new float[nx][ny];		
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int id = x + nx*y;
+			outVal[x][y]=0.0f;
+			if(maskOut[id]){
+				Iout+=image[id];
+				outVal[x][y]=image[id];
+				nOut++;
+				if (image[id] > maxOut) maxOut = image[id];
+				if (image[id] < minOut) minOut = image[id];
+			}
+		}
+		Iout=Iout/(float)nOut;
+		
+				
+		// in probability map
+		float[][] probaInImg=new float[nx][ny];
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int xy = x + nx*y;
+			if(maskCort[xy]){
+				//}
+				if(image[xy]>Iin){
+					probaInImg[x][y]=1.0f;
+				}
+				else if (image[xy]<Iout){
+					probaInImg[x][y]=0.0f;
+				}
+				else {
+					probaInImg[x][y]=(image[xy]-Iout)/(Iin-Iout);
+				}
+			}
+			else {
+				probaInImg[x][y]=0.0f;
+			}
+			
+		}
+
+		
+		// Estime diameter 
+			// Estime window size
+		System.out.println("Diameter profile\n");
+		float[][] diamEst= new float[nx][ny];
+		int[][] voisNbr= new int[nx][ny];
+		boolean[][] obj2=new boolean[nx*ny][maxscaleParam]; 
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int id = x + nx*y;
+			obj2[id][0]=false;
+			if(object[id]){
+				float[] finalDir=directionVector(finalDirection[id]);
+				diamEst[x][y]=0.0f;
+				int rIn=1;
+				int vois=0;
+				for (int i=-rIn;i<=rIn;i++) for (int j=-rIn;j<=rIn;j++) {
+					float dist= (float)FastMath.sqrt((float)i*i +(float)j*j);
+					if(dist<=rIn){
+						if(x+i<nx &&  x+i>=0 && y+j<ny &&  y+j>=0 ){
+							float orthTest=(float)i*finalDir[X]+(float)j*finalDir[Y];
+							orthTest=orthTest*orthTest;
+							if(orthTest<1.0e-9f){
+								vois++;
+								diamEst[x][y]+=probaInImg[x+i][y+j]; 	
+							}
+						}
+					}
+				}
+				diamEst[x][y]/=(float)vois; 
+				voisNbr[x][y]=vois;
+				if(diamEst[x][y]>0.5f) obj2[id][0]=true;
+			}		          
+		}
+		
+		float[][][] diamEst2= new float[nx][ny][maxscaleParam-1];
+		for(int s=1;s<maxscaleParam;s++){
+		System.out.println("Initial search "+s+"\n");
+		int rIn=1+s;
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int id = x + nx*y;
+			obj2[id][s]=false;
+			if(obj2[id][s-1]){
+				float[] finalDir=directionVector(finalDirection[id]);
+				diamEst2[x][y][s-1]=0.0f;
+
+				int vois=0;
+				for (int i=-rIn;i<=rIn;i++) for (int j=-rIn;j<=rIn;j++) {
+					float dist= (float)FastMath.sqrt((float)i*i +(float)j*j);
+					if(dist<=rIn){
+						if(x+i<nx &&  x+i>=0 && y+j<ny &&  y+j>=0 ){
+							float orthTest=(float)i*finalDir[X]+(float)j*finalDir[Y];
+							orthTest=orthTest*orthTest;
+							if(orthTest<1.0e-9f){
+								vois++;
+								diamEst2[x][y][s-1]+=probaInImg[x+i][y+j]; 	
+							}
+						}
+					}
+				}
+				diamEst2[x][y][s-1]/=(float)vois; 
+				voisNbr[x][y]=vois;
+				if(diamEst2[x][y][s-1]>0.5f) obj2[id][s]=true;
+			}		          
+		}
+		}
+			// Fit to model	
+		double[][] firstEst=new double[nx][ny];
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			firstEst[x][y]=0.0f;
+		}
+		double[][] pv=new double[nx][ny];
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			pv[x][y]=0.0f;	
+		}			
+		System.out.println("Optimization\n");
+		int wtOptim=0;
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int id=x+nx*y;
+			if(object[id]){
+				int rIn=1;
+				for(int s=1;s<maxscaleParam;s++){
+					if(obj2[id][s-1] ){			
+						rIn++;	
+					}			
+				}
+				
+				float[] finalDir=directionVector(finalDirection[id]);
+				float[] tan1=new float[2];
+			
+				boolean btan=true;
+				for(int d=0;d<4;d++){
+					if(btan){
+						tan1=directionVector(d);
+						float orthTest=(float)tan1[X]*finalDir[X]+(float)tan1[Y]*finalDir[Y];
+						orthTest=orthTest*orthTest;
+						if(orthTest<1.0e-9f){
+							btan=false;
+						}
+					}
+				}
+				
+				//System.out.print(".");
+		
+				VesselDiameterCostFunction2D jfct= new VesselDiameterCostFunction2D();
+				jfct.setImagesData(probaInImg,nx,ny);
+				jfct.setPointData(x,y, rIn,finalDir,  tan1);
+				
+				double[] init={0.0f,(double)rIn} ;
+				SimplexOptimizer optimizer= new SimplexOptimizer(1e-5,1e-10);
+				MaxEval max=new MaxEval(10000);
+				ObjectiveFunction g=new ObjectiveFunction(jfct);
+				
+				InitialGuess start=new InitialGuess(init);
+				MaxIter mIt = new MaxIter(200); 
+				double[] step={0.01f,0.01f};
+				NelderMeadSimplex simplex= new NelderMeadSimplex(step);
+				PointValuePair resultPair=optimizer.optimize(max,g, GoalType.MINIMIZE,start,simplex);
+				double[] result= resultPair.getPoint();
+				
+				firstEst[x][y]=FastMath.abs(result[1]);	
+				float maxDist= (float)rIn+0.5f;
+				if (firstEst[x][y]>maxDist) {
+					firstEst[x][y]=maxDist;	
+					wtOptim++;
+				} else {				
+					float xc=FastMath.round(result[0]*tan1[X]);
+					float yc=FastMath.round(result[0]*tan1[Y]);
+					for(int i=-rIn;i<=rIn;i++)for(int j=-rIn;j<=rIn;j++){	
+						if(x+i>=0 && x+i<nx && (y+j)>=0 && (y+j)<ny ){
+								float orthTest = finalDir[X]*(float)i+finalDir[Y]*(float)j;
+								if(orthTest*orthTest<=1e-6){
+								float dist= (float)FastMath.sqrt( ((float)i-xc)*((float)i-xc) +((float)j-yc)*((float)j-yc) );	
+								if(dist<=firstEst[x][y]-0.5f){
+									pv[x+i][y+j]=1;
+								}							
+								else if(dist<=firstEst[x][y]+0.5f){
+									pv[x+i][y+j]=FastMath.max(0.5f+firstEst[x][y]-dist,pv[x+i][y+j]);
+								}
+							}
+						}					
+					}					
+				}											
+			}
+		}
+
+		
+		// 4. grow the region around the vessel centers to fit the scale (pv modeling)
+		float[] pvol = new float[nx*ny];
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int xy = x + nx*y;
+			if (object[xy]) {
+				// when the diameter is smaller than the voxel, linear approx
+				pvol[xy] = Numerics.bounded((float)firstEst[x][y], 0.0f, 1.0f);
+				int nsc = Numerics.ceil(scaleMax[xy]/2.0f); // scale is diameter
+				for (int i=-nsc;i<=nsc;i++) for (int j=-nsc;j<=nsc;j++) {
+					if (x+i>=0 && x+i<nx && y+j>=0 && y+j<ny) {
+						float dist = (float)FastMath.sqrt(i*i+j*j);
+						// update the neighbor value for diameters above the voxel size
+						pvol[xy+i+j*nx] = Numerics.max(pvol[xy+i+j*nx], Numerics.bounded((float)firstEst[x][y]/2.0f+0.5f-dist, 0.0f, 1.0f));
+					}
+				}
+			}
+		}
+		
+		//PV map
+		pvImage = new float[nx*ny];
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int id = x + nx*y;
+			pvImage[id] = pvol[id];
+		}					
+
+		//Diameter map
+		diameterImage = new float[nx*ny];
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int id = x + nx*y;
+			if (object[id]) diameterImage[id] = (float)firstEst[x][y];
+		}	
+		
+        return;       
+    }
+    
+    private final void growPartialVolume(float[] image, int[] labels, boolean[] mask, float threshold) {
+        
+        
+		// mean,stdev inside each vessel
+		System.out.println("Vessel Intensity \n");
+		float[] avg = new float[nx*ny];
+		float[] sum = new float[nx*ny];
+		for (int id=0;id<nx*ny;id++) if (labels[id]>0) {
+			int lb = labels[id];
+			avg[lb] += image[id];
+			sum[lb] += 1.0f;
+		}
+		for (int id=0;id<nx*ny;id++) if (sum[id]>0) {
+		    avg[id] /= sum[id];
+		}
+		float[] var = new float[nx*ny];
+		for (int id=0;id<nx*ny;id++) if (labels[id]>0) {
+			int lb = labels[id];
+			var[lb] += (image[id]-avg[lb])*(image[id]-avg[lb]);
+		}
+		for (int id=0;id<nx*ny;id++) if (sum[id]>1.0f) {
+		    var[id] /= (sum[id]-1.0f);
+		}
+		
+		// grow region with p(mu,sigma)>0.5
+		BinaryHeapPair heap = new BinaryHeapPair(nx+ny, nx+ny, BinaryHeapPair.MAXTREE);
+		
+        // simply order them by size instead?
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int id = x + nx*y;
+			if (labels[id]>0) {
+			    for (byte k = 0; k<4; k++) {
+			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny);
+			        if (mask[ngb] && labels[ngb]==0) {
+                        int lb = labels[id];
+                        float pv = (float)FastMath.exp(-0.5*(image[ngb]-avg[lb])*(image[ngb]-avg[lb])/var[lb]);
+                        if (pv>=0.5f) heap.addValue(pv, ngb, lb);
+                    }
+                }
+            }
+        }
+        
+        float[] pvmap = new float[nx*ny];
+        for (int id=0;id<nx*ny;id++) if (labels[id]>0) {
+            pvmap[id] = 1.0f;
+        }
+        while (heap.isNotEmpty()) {
+            float pv = heap.getFirst();
+            int id = heap.getFirstId1();
+            int lb = heap.getFirstId2();
+            
+            heap.removeFirst();
+            
+            if (pvmap[id]==0) {
+                // add to current pv
+                pvmap[id] = pv;
+                labels[id] = lb;
+                
+                for (byte k = 0; k<4; k++) {
+			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny);
+			        if (mask[ngb] && labels[ngb]==0) {
+                        float newpv = (float)FastMath.exp(-0.5*(image[ngb]-avg[lb])*(image[ngb]-avg[lb])/var[lb]);
+                        if (newpv>=0.5f) heap.addValue(newpv, ngb, lb);
+                    }
+                }
+            }
+        }
+		
+		//debug: compute average probability instead
+		float[] pavg = new float[nx*ny];
+		float[] psum = new float[nx*ny];
+		for (int id=0;id<nx*ny;id++) if (labels[id]>0) {
+		    int lb = labels[id];
+		    pavg[lb] += probaImage[id];
+		    psum[lb] ++;
+		}
+		for (int id=0;id<nx*ny;id++) if (labels[id]>0) {
+		    int lb = labels[id];
+		    if (psum[lb]>0) {
+                probaImage[id] = pavg[lb]/psum[lb];
+            }
+        }
+		
+		// Diameter from skeleton
+		float[] nbdist = new float[4];
+		boolean[] nbflag = new boolean[4];
+		
+		heap = new BinaryHeapPair(nx+ny, nx+ny, BinaryHeapPair.MINTREE);
+		heap.reset();
+		
+		// initialize the heap from boundaries
+		float[] distance = new float[nx*ny];
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int id = x + nx*y;
+			if (labels[id]>0) {
+			    boolean boundary=false;
+			    for (byte k = 0; k<4 && !boundary; k++) {
+			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny);
+			        if (labels[ngb]==0) {
+                        boundary=true;
+                    }
+                }
+                if (boundary) heap.addValue(pvmap[id], id, labels[id]);
+            }
+        }
+
+		while (heap.isNotEmpty()) {
+        	// extract point with minimum distance
+        	float dist = heap.getFirst();
+        	int id = heap.getFirstId1();
+        	int lb = heap.getFirstId2();
+        	
+        	heap.removeFirst();
+
+        	// if more than nmgdm labels have been found already, this is done
+			if (distance[id]==0) {
+			    distance[id] = dist;
+			    
+			    // find new neighbors
+			    for (byte k = 0; k<4; k++) {
+			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny);
+				
+			        // must be in outside the object or its processed neighborhood
+			        if (labels[ngb]==lb && distance[ngb]==0) {
+			            // compute new distance based on processed neighbors for the same object
+			            for (byte l=0; l<4; l++) {
+			                nbdist[l] = -1.0f;
+			                nbflag[l] = false;
+			                int ngb2 = fastMarchingNeighborIndex(l, ngb, nx, ny);
+			                // note that there is at most one value used here
+			                if (labels[ngb2]==lb && distance[ngb2]>0) {
+			                    nbdist[l] = distance[ngb2];
+			                    nbflag[l] = true;
+			                }			
+			            }
+			            float newdist = minimumMarchingDistance(nbdist, nbflag);
+					
+			            // add to the heap
+			            heap.addValue(newdist,ngb,lb);
+			        }
+				}
+			}			
+		}
+		
+		// find regions with low gradient as center?
+		boolean[] keep = new boolean[nx*ny];
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int id = x + nx*y;
+			if (distance[id]>0) {
+			    int lb = labels[id];
+			    float gradx = 0.0f;
+			    if (labels[id+1]==lb) gradx += 0.5f*distance[id+1];
+			    if (labels[id-1]==lb) gradx -= 0.5f*distance[id-1];
+			    float grady = 0.0f;
+			    if (labels[id+nx]==lb) grady += 0.5f*distance[id+nx];
+			    if (labels[id-nx]==lb) grady -= 0.5f*distance[id-nx];
+			    float gradxy = 0.0f;
+			    if (labels[id+1+nx]==lb) gradxy += 0.5f*distance[id+1+nx];
+			    if (labels[id-1-nx]==lb) gradxy -= 0.5f*distance[id-1-nx];
+			    float gradyx = 0.0f;
+			    if (labels[id+1-nx]==lb) gradyx += 0.5f*distance[id+1-nx];
+			    if (labels[id-1+nx]==lb) gradyx -= 0.5f*distance[id-1+nx];
+			    
+			    // remove everything with high gradient, see what's left?
+			    if (Numerics.max(gradx*gradx,grady*grady,gradxy*gradxy,gradyx*gradyx)<=0.25f) keep[id] = true;
+			 }
+		}
+		// grow inregion back from skeleton points
+		float[] radius = new float[nx*ny];
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int id = x + nx*y;
+			if (keep[id]) {
+			    radius[id] = distance[id];
+			    for (byte k = 0; k<4; k++) {
+			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny);
+			        if (labels[ngb]==labels[id] && !keep[ngb]) {
+                        heap.addValue(Numerics.abs(distance[ngb]-distance[id]), ngb, id);
+                    }
+                }
+            }
+        }
+
+		while (heap.isNotEmpty()) {
+        	// extract point with minimum distance
+        	float dist = heap.getFirst();
+        	int id = heap.getFirstId1();
+        	int prev = heap.getFirstId2();
+        	
+        	heap.removeFirst();
+
+        	// if more than nmgdm labels have been found already, this is done
+			if (!keep[id]) {
+			    radius[id] = radius[prev];
+			    keep[id]=true;
+			    
+			    // find new neighbors
+			    for (byte k = 0; k<4; k++) {
+			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny);
+			        if (labels[ngb]==labels[id] && !keep[ngb]) {
+                        heap.addValue(dist+Numerics.abs(distance[ngb]-distance[id]), ngb, id);
+                    }
+				}
+			}			
+		}
+		
+		// correct for starting point of distances, turn into diameter
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int id = x + nx*y;
+		    if (pvmap[id]>0) {
+		        radius[id] = 2.0f*Numerics.max(radius[id]-0.5f,0.5f);
+		    }
+		}
+		// correct for background stuff, based on model of 2D vessel as a line
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int id = x + nx*y;
+		    if (probaImage[id]<2.0f*threshold/3.0f) {
+		        radius[id] = 0.0f;
+		        pvmap[id] = 0.0f;
+		    }
+		}
+		//PV map
+		pvImage = pvmap;
+		
+		//Diameter map
+		diameterImage = radius;
+		
+        return;       
+    }
+
+    private static final int fastMarchingNeighborIndex(byte d, int id, int nx, int ny) {
+		switch (d) {
+			case 0		: 	return id+1; 		
+			case 1		:	return id-1;
+			case 2		:	return id+nx;
+			case 3		:	return id-nx;
+			default		:	return id;
+		}
+	}
+
+    private static final float minimumMarchingDistance(float[] val, boolean[] flag) {
+
+        float s, s2; // s = a + b +c; s2 = a*a + b*b +c*c
+        float tmp;
+        int count;
+        s = 0;
+        s2 = 0;
+        
+        count = 0;
+
+        for (int n=0; n<4; n+=2) {
+			if (flag[n] && flag[n+1]) {
+				tmp = Numerics.min(val[n], val[n+1]); // Take the smaller one if both are processed
+				s += tmp;
+				s2 += tmp*tmp;
+				count++;
+			} else if (flag[n]) {
+				s += val[n]; // Else, take the processed one
+				s2 += val[n]*val[n];
+				count++;
+			} else if (flag[n+1]) {
+				s += val[n+1];
+				s2 += val[n+1]*val[n+1];
+				count++;
+			}
+		}
+         // count must be greater than zero since there must be at least one processed pt in the neighbors
+        if (count==0) System.err.print("!");
+        if (s*s-count*(s2-1.0)<0) {
+        	System.err.print(":");
+        	tmp = 0;
+        	for (int n=0;n<4;n++) if (flag[n]) tmp = Numerics.max(tmp,val[n]);
+        	for (int n=0;n<4;n++) if (flag[n]) tmp = Numerics.min(tmp,val[n]);
+        } else {
+			tmp = (s + (float)FastMath.sqrt((double) (s*s-count*(s2-1.0))))/count;
+		}
+        // The larger root
+        return tmp;
     }
 
 }

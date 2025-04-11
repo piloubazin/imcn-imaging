@@ -132,6 +132,10 @@ public class ConditionalShapeSegmentationFaster {
 	private float[][]        logVolMean2;
 	private float[][]        logVolStdv2;
 
+	private int[][]        origLabels;
+	private float[][]      origProbas;
+	private int[][]        targetLabels;
+	private float[][]      targetProbas;
 	/* not used
 	private double[]        boundaryDev;
 	private double[]        objAvg;
@@ -194,6 +198,25 @@ public class ConditionalShapeSegmentationFaster {
 	    //System.out.println("target ("+cnt+") = "+targetImages[cnt][Numerics.floor(nx/2+nx*ny/2+nx*ny*nz/2)]);
 	}
 	public final void setAvgTargetImageAt(int cnt, float[] val) { avgTargetImages[cnt] = val; 
+	    //System.out.println("target ("+cnt+") = "+targetImages[cnt][Numerics.floor(nx/2+nx*ny/2+nx*ny*nz/2)]);
+	}
+	public final void initOrigTargetLabelings(int val) {
+	    nbest = val;
+	    origLabels = new int[nbest][];
+	    origProbas = new float[nbest][];
+	    targetLabels = new int[nbest][];
+	    targetProbas = new float[nbest][];
+	}
+	public final void setOrigLabelsAt(int cnt, int[] val) { origLabels[cnt] = val; 
+	    //System.out.println("target ("+cnt+") = "+targetImages[cnt][Numerics.floor(nx/2+nx*ny/2+nx*ny*nz/2)]);
+	}
+	public final void setOrigProbasAt(int cnt, float[] val) { origProbas[cnt] = val; 
+	    //System.out.println("target ("+cnt+") = "+targetImages[cnt][Numerics.floor(nx/2+nx*ny/2+nx*ny*nz/2)]);
+	}
+	public final void setTargetLabelsAt(int cnt, int[] val) { targetLabels[cnt] = val; 
+	    //System.out.println("target ("+cnt+") = "+targetImages[cnt][Numerics.floor(nx/2+nx*ny/2+nx*ny*nz/2)]);
+	}
+	public final void setTargetProbasAt(int cnt, float[] val) { targetProbas[cnt] = val; 
 	    //System.out.println("target ("+cnt+") = "+targetImages[cnt][Numerics.floor(nx/2+nx*ny/2+nx*ny*nz/2)]);
 	}
 	public final void setShapeAtlasProbasAndLabels(float[] pval, int[] lval) {
@@ -1981,6 +2004,70 @@ public class ConditionalShapeSegmentationFaster {
                 for (int bin=0;bin<nbins;bin++) if (sum>0) trgcondhistogram[tc][obj1][obj2][bin] /= sum;   
             }
         }
+    	
+		return;
+	}
+
+	public final void mapAtlasVolumePriors() {
+	    
+        System.out.println("(use transformed priors)");
+        
+        // single object volume priors
+        for (int obj=0;obj<nobj;obj++) {
+            System.out.print("\n("+(obj+1)+"): ");
+            double avol = 0.0;
+            for (int xyza=0;xyza<naxyz;xyza++) {
+                // look for non-zero priors
+                for (int best=0;best<nbest;best++) {
+                    if (origLabels[best][xyza]>100*(obj+1) && origLabels[best][xyza]<100*(obj+2)) {
+                        float prior = origProbas[best][xyza];
+                        avol += prior*rax*ray*raz;
+                    }
+                }
+            }
+            System.out.print(avol+" -> ");
+            double tvol = 0.0;
+            for (int xyzt=0;xyzt<ntxyz;xyzt++) {
+                // look for non-zero priors
+                for (int best=0;best<nbest;best++) {
+                    if (targetLabels[best][xyzt]>100*(obj+1) && targetLabels[best][xyzt]<100*(obj+2)) {
+                        float prior = targetProbas[best][xyzt];
+                        tvol += prior*rtx*rty*rtz;
+                    }
+                }
+            }
+            System.out.print(tvol+", ratio: "+tvol/avol);
+            logVolMean[obj] += FastMath.log(Numerics.max(1.0,tvol)) - FastMath.log(Numerics.max(1.0,avol));
+            logVolStdv[obj] += FastMath.log(Numerics.max(1.0,tvol)) - FastMath.log(Numerics.max(1.0,avol));
+        }
+        /* skip for now, not relevant anymore, and verrrry slow
+        for (int obj1=0;obj1<nobj;obj1++) for (int obj2=0;obj2<nobj;obj2++) {
+            System.out.print("\n("+(obj1+1)+" | "+(obj2+1)+"): ");
+            double avol = 0.0;
+            for (int xyza=0;xyza<naxyz;xyza++) {
+                // look for non-zero priors
+                for (int best=0;best<nbest;best++) {
+                    if (origLabels[best][xyza]==100*(obj1+1)+(obj2+1)) {
+                        float prior = origProbas[best][xyza];
+                        avol += prior*rax*ray*raz;
+                    }
+                }
+            }
+            System.out.print(avol+" -> ");
+            double tvol = 0.0;
+            for (int xyzt=0;xyzt<ntxyz;xyzt++) {
+                // look for non-zero priors
+                for (int best=0;best<nbest;best++) {
+                    if (targetLabels[best][xyzt]==100*(obj1+1)+(obj2+1)) {
+                        float prior = targetProbas[best][xyzt];
+                        tvol += prior*rtx*rty*rtz;
+                    }
+                }
+            }
+            System.out.print(tvol+", ratio: "+tvol/avol);
+            logVolMean2[obj1][obj2] += FastMath.log(Numerics.max(1.0,tvol)) - FastMath.log(Numerics.max(1.0,avol));
+            logVolStdv2[obj1][obj2] += FastMath.log(Numerics.max(1.0,tvol)) - FastMath.log(Numerics.max(1.0,avol));
+        }*/
     	
 		return;
 	}
