@@ -35,8 +35,6 @@ public class LinearFiberMapping3D {
 	
 	private boolean maskBg = true;
 	
-	private boolean skipDetect = false;
-	
 	private float difffactorParam = 1.0f;
 	private float simscaleParam = 0.1f;
 	private int ngbParam = 4;
