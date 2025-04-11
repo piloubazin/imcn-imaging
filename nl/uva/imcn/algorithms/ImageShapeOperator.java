@@ -30,7 +30,7 @@ public class ImageShapeOperator {
 	private static final boolean		verbose=true;
 
 	// create inputs
-	public final void setInputeImage(float[] val) { image = val; }
+	public final void setInputImage(float[] val) { image = val; }
 	
 	public final void setDimensions(int x, int y, int z) { nx=x; ny=y; nz=z; nxyz=nx*ny*nz; }
 	public final void setDimensions(int[] dim) { nx=dim[0]; ny=dim[1]; nz=dim[2]; nxyz=nx*ny*nz; }
@@ -47,7 +47,7 @@ public class ImageShapeOperator {
 		shapeImage = new float[nxyz*6];
 		
 		for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
-		    int xyz = x*nx*y+nx*ny*z;
+		    int xyz = x+nx*y+nx*ny*z;
 		    if (image[xyz]!=0) {
 		        float dx = 0.5f*(image[xyz+1]-image[xyz-1]);
 		        float dy = 0.5f*(image[xyz+nx]-image[xyz-nx]);

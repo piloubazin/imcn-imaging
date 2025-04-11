@@ -1691,7 +1691,7 @@ public class ConditionalShapeSegmentationFaster {
             for (int c=0;c<nc;c++) {
                 // rescale top % in each shape and intensity priors
                 Percentile measure = new Percentile();
-                 double[] val = new double[ndata];
+                double[] val = new double[ndata];
                 for (int id=0;id<ndata;id++) val[id] = separateIntensProbas[c][0][id];
                 
                 float intensMax = (float)measure.evaluate(val, top);
