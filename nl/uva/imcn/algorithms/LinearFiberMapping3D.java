@@ -2373,6 +2373,15 @@ public class LinearFiberMapping3D {
                 probaImage[id] = pavg[lb]/psum[lb];
             }
         }
+        
+        // correct for background stuff, based on simplistic model of 3D vessel as a line
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+			int id = x + nx*y + nx*ny*z;
+		    if (probaImage[id]<5.0f*threshold/9.0f) {
+		        pvmap[id] = 0.0f;
+		        labels[id] = 0;
+		    }
+		}
 		
 		// Diameter from skeleton
 		float[] nbdist = new float[6];
@@ -2518,15 +2527,7 @@ public class LinearFiberMapping3D {
 		        radius[id] = 2.0f*Numerics.max(radius[id]-0.5f,0.5f);
 		    }
 		}
-		// correct for background stuff, based on simplistic model of 3D vessel as a line
-		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
-			int id = x + nx*y + nx*ny*z;
-		    if (probaImage[id]<5.0f*threshold/9.0f) {
-		        radius[id] = 0.0f;
-		        pvmap[id] = 0.0f;
-		        labels[id] = 0;
-		    }
-		}
+
 		//PV map
 		pvImage = pvmap;
 		

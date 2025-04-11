@@ -1222,6 +1222,15 @@ public class LinearFiberMapping {
             }
         }
 		
+		// correct for background stuff, based on model of 2D vessel as a line
+		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
+			int id = x + nx*y;
+		    if (probaImage[id]<2.0f*threshold/3.0f) {
+		        pvmap[id] = 0.0f;
+		        labels[id] = 0;
+		    }
+		}
+
 		// Diameter from skeleton
 		float[] nbdist = new float[4];
 		boolean[] nbflag = new boolean[4];
@@ -1351,14 +1360,7 @@ public class LinearFiberMapping {
 		        radius[id] = 2.0f*Numerics.max(radius[id]-0.5f,0.5f);
 		    }
 		}
-		// correct for background stuff, based on model of 2D vessel as a line
-		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
-			int id = x + nx*y;
-		    if (probaImage[id]<2.0f*threshold/3.0f) {
-		        radius[id] = 0.0f;
-		        pvmap[id] = 0.0f;
-		    }
-		}
+
 		//PV map
 		pvImage = pvmap;
 		
