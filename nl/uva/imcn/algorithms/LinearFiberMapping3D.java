@@ -33,12 +33,14 @@ public class LinearFiberMapping3D {
 	private int minscaleParam = 0;
 	private int maxscaleParam = 3;
 	
+	private boolean maskBg = true;
+	
 	private float difffactorParam = 1.0f;
 	private float simscaleParam = 0.1f;
 	private int ngbParam = 4;
 	private int iterParam = 100;
 	private float maxdiffParam = 0.001f;
-	private boolean skipDetection = false;
+	private boolean skipDetect = false;
 	
 	private float detectionThreshold = 0.01f;
 	private float maxLineDist = 1.0f;
@@ -106,6 +108,8 @@ public class LinearFiberMapping3D {
 	public final void setInputImage(float[] val) { inputImage = val; }
 	public final void setRidgeIntensities(String val) { brightParam = val; }
 
+	public final void setMaskBackground(boolean val) { maskBg = val; }
+	
 	public final void setMinimumScale(int val) { minscaleParam = val; }
 	public final void setMaximumScale(int val) { maxscaleParam = val; }
 
@@ -114,7 +118,7 @@ public class LinearFiberMapping3D {
 	public final void setNeighborhoodSize(int val) { ngbParam = val; }
 	public final void setMaxIterations(int val) { iterParam = val; }
 	public final void setMaxDifference(float val) { maxdiffParam = val; }
-	public final void setSkipDetection(boolean val) { skipDetection = val; }
+	public final void setSkipDetection(boolean val) { skipDetect = val; }
 		
 	public final void setDetectionThreshold(float val) { detectionThreshold = val; }
 	public final void setMaxLineDistance(float val) { maxLineDist = val; }
@@ -152,7 +156,7 @@ public class LinearFiberMapping3D {
 		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
 			int id = x + nx*y + nx*ny*z;
 			// mask
-			if (inputImage[id]==0) mask[id] = false;
+			if (maskBg && inputImage[id]==0) mask[id] = false;
 			else mask[id] = true;
 			// remove border from computations
 			if (x<=1 || x>=nx-2 || y<=1 || y>=ny-2 || z<=1 || z>=nz-2) mask[id] = false;
@@ -160,11 +164,12 @@ public class LinearFiberMapping3D {
 			if (inputImage[id]>maxI) maxI = inputImage[id];
 			if (inputImage[id]<minI) minI = inputImage[id];
 		}
-				
-		float[] propag = null;
-		if (skipDetection) {
-		    propag = inputImage;
-		} else {
+		
+		// skip the detection step in case we already have a probability map as input
+		float[] propag;
+		int[] maxscale=null;
+		byte[] maxdirection=null;
+		if (!skipDetect) {
 		    
             // normalize, invert inputImage if looking for dark features
             BasicInfo.displayMessage("...normalize intensities (detection: "+brightParam+")\n");
@@ -182,8 +187,8 @@ public class LinearFiberMapping3D {
             // Compute filter at different scales
             // new filter response from raw inputImage		
             float[] maxresponse = new float[nxyz];
-            byte[] maxdirection = new byte[nxyz];
-            int[] maxscale = new int[nxyz];
+            maxdirection = new byte[nxyz];
+            maxscale = new int[nxyz];
             
             if (minscaleParam==0) {
                 BasicInfo.displayMessage("...first filter response\n");
@@ -238,8 +243,11 @@ public class LinearFiberMapping3D {
             BasicInfo.displayMessage("...diffusion\n");
             
             propag = probabilisticDiffusion1D(proba, maxdirection, ngbParam, maxdiffParam, simscaleParam, difffactorParam, iterParam);
+		} else{
+		    BasicInfo.displayMessage("skip ridge detection step\n");
+		    propag = inputImage;
 		}
-		
+
 		// 4. Estimate groupings / linear fits?
 		BasicInfo.displayMessage("...line groupings\n");
 		// -> grow region as long as it's linear-ish and >0?
@@ -300,11 +308,12 @@ public class LinearFiberMapping3D {
                 float minscore = maxpropag;
                 
                 for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) for (int dz=-1;dz<=1;dz++) {
-                    int ngb = xM+dx + nx*(yM+dy) + nx*ny*(zM+dz);
-                    if (mask[ngb] && !used[ngb]) {
-                        if (propag[ngb]>detectionThreshold && propag[ngb]>stoppingRatio*maxpropag) {
-                        //if (propag[ngb]>stoppingRatio*maxpropag) {
-                            heap.addValue(propag[ngb], xM+dx, yM+dy, zM+dz);
+                    if (xM+dx>=0 && xM+dx<nx && yM+dy>=0 && yM+dy<ny && zM+dz>=0 && zM+dz<nz) { 
+                        int ngb = xM+dx + nx*(yM+dy) + nx*ny*(zM+dz);
+                        if (mask[ngb] && !used[ngb]) {
+                            if (propag[ngb]>detectionThreshold || propag[ngb]>stoppingRatio*maxpropag) {
+                                heap.addValue(propag[ngb], xM+dx, yM+dy, zM+dz);
+                            }
                         }
                     }
                 }
@@ -386,11 +395,12 @@ public class LinearFiberMapping3D {
                         heap.removeFirst();
     
                         for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) for (int dz=-1;dz<=1;dz++) {
-                            int ngb = lx[nl]+dx + nx*(ly[nl]+dy) + nx*ny*(lz[nl]+dz);
-                            if (mask[ngb] && !used[ngb]) {
-                                if (propag[ngb]>detectionThreshold && propag[ngb]>stoppingRatio*maxpropag) {
-                                //if (propag[ngb]>stoppingRatio*maxpropag) {
-                                    heap.addValue(propag[ngb], lx[nl]+dx, ly[nl]+dy, lz[nl]+dz);
+                            if (lx[nl]+dx>=0 && lx[nl]+dx<nx && ly[nl]+dy>=0 && ly[nl]+dy<ny && lz[nl]+dz>=0 && lz[nl]+dz<nz) { 
+                                int ngb = lx[nl]+dx + nx*(ly[nl]+dy) + nx*ny*(lz[nl]+dz);
+                                if (mask[ngb] && !used[ngb]) {
+                                    if (propag[ngb]>detectionThreshold || propag[ngb]>stoppingRatio*maxpropag) {
+                                        heap.addValue(propag[ngb], lx[nl]+dx, ly[nl]+dy, lz[nl]+dz);
+                                    }
                                 }
                             }
                         }
@@ -504,28 +514,30 @@ public class LinearFiberMapping3D {
                 
                 int xyz = x + nx*y + nx*ny*z;
                 for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) for (int dz=-1;dz<=1;dz++) {
-                    int ngb = x+dx + nx*(y+dy) + nx*ny*(z+dz);
-                    if (extendRatio<=0) {
-                        if (mask[ngb] && lines[ngb]==0) {
-                            lines[ngb] = lines[xyz];
-                            theta[ngb+nx*ny*nz*X] = theta[xyz+nx*ny*nz*X];
-                            theta[ngb+nx*ny*nz*Y] = theta[xyz+nx*ny*nz*Y];
-                            theta[ngb+nx*ny*nz*Z] = theta[xyz+nx*ny*nz*Z];
-                            length[ngb] = length[xyz];
-                            ani[ngb] = ani[xyz];
-                            proba[ngb] = score-1.0f;
-                            ordering.addValue(proba[ngb], x+dx,y+dy,z+dz);
-                        }
-                    } else {
-                        if (mask[ngb] && lines[ngb]==0 && proba[ngb]>extendRatio*score) {
-                            lines[ngb] = lines[xyz];
-                            theta[ngb+nx*ny*nz*X] = theta[xyz+nx*ny*nz*X];
-                            theta[ngb+nx*ny*nz*Y] = theta[xyz+nx*ny*nz*Y];
-                            theta[ngb+nx*ny*nz*Z] = theta[xyz+nx*ny*nz*Z];
-                            length[ngb] = length[xyz];
-                            ani[ngb] = ani[xyz];
-                            proba[ngb] = extendRatio*score;
-                            ordering.addValue(proba[ngb], x+dx,y+dy,z+dz);
+                    if (x+dx>=0 && x+dx<nx && y+dy>=0 && y+dy<ny && z+dz>=0 && z+dz<nz) { 
+                        int ngb = x+dx + nx*(y+dy) + nx*ny*(z+dz);
+                        if (extendRatio<=0) {
+                            if (mask[ngb] && lines[ngb]==0) {
+                                lines[ngb] = lines[xyz];
+                                theta[ngb+nx*ny*nz*X] = theta[xyz+nx*ny*nz*X];
+                                theta[ngb+nx*ny*nz*Y] = theta[xyz+nx*ny*nz*Y];
+                                theta[ngb+nx*ny*nz*Z] = theta[xyz+nx*ny*nz*Z];
+                                length[ngb] = length[xyz];
+                                ani[ngb] = ani[xyz];
+                                proba[ngb] = score-1.0f;
+                                ordering.addValue(proba[ngb], x+dx,y+dy,z+dz);
+                            }
+                        } else {
+                            if (mask[ngb] && lines[ngb]==0 && proba[ngb]>extendRatio*score) {
+                                lines[ngb] = lines[xyz];
+                                theta[ngb+nx*ny*nz*X] = theta[xyz+nx*ny*nz*X];
+                                theta[ngb+nx*ny*nz*Y] = theta[xyz+nx*ny*nz*Y];
+                                theta[ngb+nx*ny*nz*Z] = theta[xyz+nx*ny*nz*Z];
+                                length[ngb] = length[xyz];
+                                ani[ngb] = ani[xyz];
+                                proba[ngb] = extendRatio*score;
+                                ordering.addValue(proba[ngb], x+dx,y+dy,z+dz);
+                            }
                         }
                     }
                 }	

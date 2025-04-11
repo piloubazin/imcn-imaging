@@ -277,7 +277,7 @@ public class LinearFiberMapping {
                 for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) {
                     int ngb = xM+dx + nx*(yM+dy);
                     if (mask[ngb] && !used[ngb]) {
-                        if (propag[ngb]>detectionThreshold && propag[ngb]>stoppingRatio*maxpropag) {
+                        if (propag[ngb]>detectionThreshold || propag[ngb]>stoppingRatio*maxpropag) {
                             heap.addValue(propag[ngb], xM+dx, yM+dy);
                         }
                     }
@@ -341,7 +341,7 @@ public class LinearFiberMapping {
                         for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) {
                             int ngb = lx[nl]+dx + nx*(ly[nl]+dy);
                             if (mask[ngb] && !used[ngb]) {
-                                if (propag[ngb]>detectionThreshold && propag[ngb]>stoppingRatio*maxpropag) {
+                                if (propag[ngb]>detectionThreshold || propag[ngb]>stoppingRatio*maxpropag) {
                                     heap.addValue(propag[ngb], lx[nl]+dx, ly[nl]+dy);
                                 }
                             }
