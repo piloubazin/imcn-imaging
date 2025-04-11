@@ -45,7 +45,7 @@ public class LinearFiberMapping3D {
 	private float detectionThreshold = 0.01f;
 	private float maxLineDist = 1.0f;
 	private boolean extend = false;
-	private float stoppingRatio = 0.1f;
+	private float stoppingThreshold = 0.1f;
 	private float extendRatio = 0.5f;
 	
 	private boolean estimateDiameter = false;
@@ -123,7 +123,7 @@ public class LinearFiberMapping3D {
 	public final void setDetectionThreshold(float val) { detectionThreshold = val; }
 	public final void setMaxLineDistance(float val) { maxLineDist = val; }
 	public final void setExtendResult(boolean val) { extend = val; }
-	public final void setInclusionRatio(float val) { stoppingRatio = val; }
+	public final void setInclusionThreshold(float val) { stoppingThreshold = val; }
 	public final void setExtendRatio(float val) { extendRatio = val; }
 	
 	public final void setEstimateDiameter(boolean val) { estimateDiameter = val; }
@@ -311,7 +311,7 @@ public class LinearFiberMapping3D {
                     if (xM+dx>=0 && xM+dx<nx && yM+dy>=0 && yM+dy<ny && zM+dz>=0 && zM+dz<nz) { 
                         int ngb = xM+dx + nx*(yM+dy) + nx*ny*(zM+dz);
                         if (mask[ngb] && !used[ngb]) {
-                            if (propag[ngb]>detectionThreshold || propag[ngb]>stoppingRatio*maxpropag) {
+                            if (propag[ngb]>stoppingThreshold) {
                                 heap.addValue(propag[ngb], xM+dx, yM+dy, zM+dz);
                             }
                         }
@@ -398,7 +398,7 @@ public class LinearFiberMapping3D {
                             if (lx[nl]+dx>=0 && lx[nl]+dx<nx && ly[nl]+dy>=0 && ly[nl]+dy<ny && lz[nl]+dz>=0 && lz[nl]+dz<nz) { 
                                 int ngb = lx[nl]+dx + nx*(ly[nl]+dy) + nx*ny*(lz[nl]+dz);
                                 if (mask[ngb] && !used[ngb]) {
-                                    if (propag[ngb]>detectionThreshold || propag[ngb]>stoppingRatio*maxpropag) {
+                                    if (propag[ngb]>stoppingThreshold) {
                                         heap.addValue(propag[ngb], lx[nl]+dx, ly[nl]+dy, lz[nl]+dz);
                                     }
                                 }
@@ -2358,10 +2358,6 @@ public class LinearFiberMapping3D {
                 }
             }
         }
-        // fix label leakage (???)
-        for (int id=0;id<nx*ny*nz;id++) if (pvmap[id]==0) {
-            labels[id] = 0;
-        }
 		
 		//debug: compute average probability instead
 		float[] pavg = new float[nx*ny*nz];
@@ -2528,6 +2524,7 @@ public class LinearFiberMapping3D {
 		    if (probaImage[id]<5.0f*threshold/9.0f) {
 		        radius[id] = 0.0f;
 		        pvmap[id] = 0.0f;
+		        labels[id] = 0;
 		    }
 		}
 		//PV map
