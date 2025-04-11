@@ -29,6 +29,8 @@ public class LinearFiberMapping {
 	private String brightParam = "bright";
 	public static final String[] brightTypes = {"bright","dark","both"};
 	
+	private boolean maskBg = true;
+	
 	private int minscaleParam = 0;
 	private int maxscaleParam = 3;
 	
@@ -87,6 +89,8 @@ public class LinearFiberMapping {
 	public final void setInputImage(float[] val) { inputImage = val; }
 	public final void setRidgeIntensities(String val) { brightParam = val; }
 
+	public final void setMaskBackground(boolean val) { maskBg = val; }
+	
 	public final void setMinimumScale(int val) { minscaleParam = val; }
 	public final void setMaximumScale(int val) { maxscaleParam = val; }
 
@@ -133,7 +137,7 @@ public class LinearFiberMapping {
 		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
 			int id = x + nx*y + nx*ny*z;
 			// mask
-			if (inputImage[id]==0) mask[id] = false;
+			if (maskBg && inputImage[id]==0) mask[id] = false;
 			else mask[id] = true;
 			// remove border from computations
 			if (x<=1 || x>=nx-2 || y<=1 || y>=ny-2) mask[id] = false;
