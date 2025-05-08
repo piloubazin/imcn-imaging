@@ -2771,9 +2771,22 @@ public class ConditionalShapeSegmentationFaster {
                     if (mask[xyz]) {
                         int id = idmap[xyz];
                         if (skeletonLabels[s][id]==101*(obj+1)) {
+                            // use a combination of skeleton prior and combined spatial and intensity for starting point (to test!)
+                            for (int b=0;b<nbest;b++) {
+                                if (combinedLabels[b][id]>100*(obj+1) && combinedLabels[b][id]<100*(obj+2)) {
+                                    float score = skeletonProbas[s][id]*combinedProbas[b][id];
+                                    if (score>bestscore[obj]) {
+                                        bestscore[obj] = score;
+                                        start[obj] = xyz;
+                                        //System.out.println("("+obj+":"+x+","+y+","+z+"="+score+")");
+                                    }
+                                }
+                            }
+                            
                         //if (spatialLabels[b][id]>100*(obj+1) && spatialLabels[b][id]<100*(obj+2)) {
                         //if (combinedLabels[b][id]>100*(obj+1) && combinedLabels[b][id]<100*(obj+2)) {
                         //if (combinedLabels[b][idmap[xyz]]==101*(obj+1)) {
+                            /*
                             float score = skeletonProbas[s][id];
                             //float score = spatialProbas[b][id];
                             //if (b==0) score = combinedProbas[0][id]-combinedProbas[nextbest[obj][id]][id];
@@ -2782,7 +2795,7 @@ public class ConditionalShapeSegmentationFaster {
                                 bestscore[obj] = score;
                                 start[obj] = xyz;
                                 //System.out.println("("+obj+":"+x+","+y+","+z+"="+score+")");
-                            }
+                            }*/
                         }
                     }
                 }
@@ -2830,6 +2843,7 @@ public class ConditionalShapeSegmentationFaster {
                                     }
                                 }
                                 score += offset;
+                                //score *= (1.0f+offset);
                                 if (k>=18) if (score>0) score *= ISQRT3; else score /= ISQRT3;
                                 else if (k>=6) if (score>0) score *= ISQRT2; else score /= ISQRT2;
                                 heap.addValue(score,ngb,combinedLabels[best][idmap[ngb]]);
@@ -2870,8 +2884,11 @@ public class ConditionalShapeSegmentationFaster {
                                                 }
                                             }
                                             newscore += offset;
+                                            //newscore *= (1.0f+offset);
                                             if (k>=18) if (newscore>0) newscore *= ISQRT3; else newscore /= ISQRT3;
                                             else if (k>=6) if (newscore>0) newscore *= ISQRT2; else newscore /= ISQRT2;
+                                            // weight by relative size, so smaller structures are prioritized? not useful
+                                            //newscore *= (1.0f-vol[obj]/bestvol[obj]);
                                             heap.addValue(newscore,ngb,combinedLabels[best][idmap[ngb]]);
                                             best=nbest;
                                         }
