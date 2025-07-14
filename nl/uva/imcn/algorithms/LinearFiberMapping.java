@@ -43,6 +43,7 @@ public class LinearFiberMapping {
 	
 	private float detectionThreshold = 0.01f;
 	private float maxLineDist = 1.0f;
+	private float minLineRatio = 0.1f;
 	private boolean extend = true;
 	private float stoppingThreshold = 0.1f;
 	private float extendRatio = 0.5f;
@@ -103,6 +104,7 @@ public class LinearFiberMapping {
 		
 	public final void setDetectionThreshold(float val) { detectionThreshold = val; }
 	public final void setMaxLineDistance(float val) { maxLineDist = val; }
+	public final void setMinLineRatio(float val) { minLineRatio = val; }
 	public final void setExtendResult(boolean val) { extend = val; }
 	public final void setInclusionThreshold(float val) { stoppingThreshold = val; }
 	public final void setExtendRatio(float val) { extendRatio = val; }
@@ -326,7 +328,7 @@ public class LinearFiberMapping {
                             if (newdist>linedist) linedist = newdist;
                         }
                     }
-                    if (linedist>maxLineDist2) {
+                    if (linedist>maxLineDist2 && linedist>Numerics.square(minLineRatio*nl)) {
                         // do not stop directly as other voxels with lower proba
                         // might still be fittingthe line
                         //stop = true;
