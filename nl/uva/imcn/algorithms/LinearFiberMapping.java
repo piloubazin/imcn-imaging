@@ -278,6 +278,7 @@ public class LinearFiberMapping {
                 // instead, allow thickness increase up to length, but no further
                 
                 double linedist=0.0;
+                double linelength=0.0;
                 float minscore = maxpropag;
                 
                 for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) {
@@ -320,15 +321,28 @@ public class LinearFiberMapping {
                     if (vxy!=0) {
                         double vx = vyy-vxx + FastMath.sqrt( (vyy-vxx)*(vyy-vxx) + 4.0*vxy*vxy);
                         double vy = -2.0*vxy;
-                        double norm = vx*vx+vy*vy;
+                        double norm = FastMath.sqrt(vx*vx+vy*vy);
                         
-                        linedist = Numerics.square(vx*(heap.getFirstId1()-cx) + vy*(heap.getFirstId2()-cy))/norm;
+                        linedist = Numerics.abs(vx*(heap.getFirstId1()-cx) + vy*(heap.getFirstId2()-cy))/norm;
                         for (int n=0;n<nl;n++) {
-                            double newdist = Numerics.square(vx*(lx[n]-cx) + vy*(ly[n]-cy))/norm;
+                            double newdist = Numerics.abs(vx*(lx[n]-cx) + vy*(ly[n]-cy))/norm;
                             if (newdist>linedist) linedist = newdist;
                         }
+                        
+                        double centerdist = (vy*(heap.getFirstId1()-cx) - vx*(heap.getFirstId2()-cy))/norm;
+                        double minL = centerdist;
+                        double maxL = centerdist;
+                        for (int n=0;n<nl;n++) {
+                            centerdist = (vy*(lx[n]-cx) - vx*(ly[n]-cy))/norm;
+                            if (centerdist>maxL) maxL = centerdist;
+                            if (centerdist<minL) minL = centerdist;
+                        }
+                        linelength = 1.0+maxL-minL;
+                    } else {
+                        linedist=maxLineDist+1.0;
+                        linelength = 0.0;
                     }
-                    if (linedist>maxLineDist2 && linedist>Numerics.square(minLineRatio*nl)) {
+                    if (linedist>maxLineDist && linedist>minLineRatio*linelength) {
                         // do not stop directly as other voxels with lower proba
                         // might still be fittingthe line
                         //stop = true;
