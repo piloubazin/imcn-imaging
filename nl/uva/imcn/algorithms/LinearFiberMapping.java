@@ -149,8 +149,7 @@ public class LinearFiberMapping {
 		}
 		
 		float[] propag = null;
-		int[] maxscale = new int[nxyz];
-        if (skipDetection) {
+		if (skipDetection) {
 		    propag = inputImage;
 		} else {
 		
@@ -171,7 +170,7 @@ public class LinearFiberMapping {
             // new filter response from raw inputImage		
             float[] maxresponse = new float[nxyz];
             byte[] maxdirection = new byte[nxyz];
-            //int[] maxscale = new int[nxyz];
+            int[] maxscale = new int[nxyz];
             
             if (minscaleParam==0) {
                 BasicInfo.displayMessage("...first filter response\n");
@@ -329,7 +328,7 @@ public class LinearFiberMapping {
                             double newdist = Numerics.abs(vx*(lx[n]-cx) + vy*(ly[n]-cy))/norm;
                             if (newdist>linedist) linedist = newdist;
                         }
-                        
+                        /*
                         double centerdist = (vy*(heap.getFirstId1()-cx) - vx*(heap.getFirstId2()-cy))/norm;
                         double minL = centerdist;
                         double maxL = centerdist;
@@ -342,7 +341,7 @@ public class LinearFiberMapping {
                         
                         if (maxscale[heap.getFirstId1()+nx*heap.getFirstId2()]>0) {
                             linedist /= maxscale[heap.getFirstId1()+nx*heap.getFirstId2()];
-                        }
+                        }*/
                     } else {
                         linedist=maxLineDist+1.0;
                         linelength = 0.0;
