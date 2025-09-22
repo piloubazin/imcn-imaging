@@ -497,8 +497,10 @@ public class LinearFiberMapping {
 
                     // compute average probability score for the entire line
                     float meanp = 0.0f;
+                    float maxp = 0.0f;
                     for (int n=0;n<nl;n++) {
                         meanp += propag[lx[n]+nx*ly[n]]/nl;
+                        if (propag[lx[n]+nx*ly[n]]>maxp) maxp = propag[lx[n]+nx*ly[n]];
                     }
                     
                     // Add line to detected ones
@@ -508,7 +510,8 @@ public class LinearFiberMapping {
                         theta[lx[n]+nx*ly[n]] = (float)(thetaL*180.0/FastMath.PI);
                         length[lx[n]+nx*ly[n]] = lengthL;
                         ani[lx[n]+nx*ly[n]] = aniL;
-                        proba[lx[n]+nx*ly[n]] = meanp;
+                        //proba[lx[n]+nx*ly[n]] = meanp;
+                        proba[lx[n]+nx*ly[n]] = maxp;
                     }
                 } else {
                     // remove single point detections (artefacts)
@@ -1282,6 +1285,10 @@ public class LinearFiberMapping {
         for (int id=0;id<nx*ny;id++) if (labels[id]>0) {
             pvmap[id] = 1.0f;
         }
+        int[] lbmap = new int[nx*ny];
+        for (int id=0;id<nx*ny;id++) {
+            lbmap[id] = labels[id];
+        }
         while (heap.isNotEmpty()) {
             //float pv = heap.getFirst();
             int cur = heap.getFirstId1();
@@ -1296,6 +1303,7 @@ public class LinearFiberMapping {
             if (pvmap[cur]==0) {
                 // add to current pv
                 pvmap[cur] = pv;
+                lbmap[cur] = lb;
                 //labels[cur] = lb;
                 //proba[cur] = pb;
                 
@@ -1311,22 +1319,21 @@ public class LinearFiberMapping {
         
         //probaImage = proba;
         
-		/*
 		// correct for background stuff, based i=on initial values? easier to do taht beforehand?
 		float[] pavg = new float[nx*ny];
 		float[] psum = new float[nx*ny];
-		for (int id=0;id<nx*ny;id++) if (labels[id]>0) {
-		    int lb = labels[id];
+		for (int id=0;id<nx*ny;id++) if (lbmap[id]>0) {
+		    int lb = lbmap[id];
 		    pavg[lb] += proba[id];
 		    psum[lb] ++;
 		}
-		for (int id=0;id<nx*ny;id++) if (labels[id]>0) {
-			int lb = labels[id];
-		    if (pavg[lb]<threshold*psum[lb]) {
+		for (int id=0;id<nx*ny;id++) if (lbmap[id]>0) {
+			int lb = lbmap[id];
+		    if (pavg[lb]<1.0f/3.0f*threshold*psum[lb]) {
 		        pvmap[id] = 0.0f;
-		        labels[id] = 0;
+		        lbmap[id] = 0;
 		    }
-		}*/
+		}
 
 		// Diameter from skeleton
 		float[] nbdist = new float[4];
@@ -1339,15 +1346,15 @@ public class LinearFiberMapping {
 		float[] distance = new float[nx*ny];
 		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
 			int id = x + nx*y;
-			if (labels[id]>0) {
+			if (lbmap[id]>0) {
 			    boolean boundary=false;
 			    for (byte k = 0; k<4 && !boundary; k++) {
 			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny);
-			        if (labels[ngb]==0) {
+			        if (lbmap[ngb]==0) {
                         boundary=true;
                     }
                 }
-                if (boundary) heap.addValue(pvmap[id], id, labels[id]);
+                if (boundary) heap.addValue(pvmap[id], id, lbmap[id]);
             }
         }
 
@@ -1368,14 +1375,14 @@ public class LinearFiberMapping {
 			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny);
 				
 			        // must be in outside the object or its processed neighborhood
-			        if (labels[ngb]==lb && distance[ngb]==0) {
+			        if (lbmap[ngb]==lb && distance[ngb]==0) {
 			            // compute new distance based on processed neighbors for the same object
 			            for (byte l=0; l<4; l++) {
 			                nbdist[l] = -1.0f;
 			                nbflag[l] = false;
 			                int ngb2 = fastMarchingNeighborIndex(l, ngb, nx, ny);
 			                // note that there is at most one value used here
-			                if (labels[ngb2]==lb && distance[ngb2]>0) {
+			                if (lbmap[ngb2]==lb && distance[ngb2]>0) {
 			                    nbdist[l] = distance[ngb2];
 			                    nbflag[l] = true;
 			                }			
@@ -1396,17 +1403,17 @@ public class LinearFiberMapping {
 			if (distance[id]>0) {
 			    int lb = labels[id];
 			    float gradx = 0.0f;
-			    if (labels[id+1]==lb) gradx += 0.5f*distance[id+1];
-			    if (labels[id-1]==lb) gradx -= 0.5f*distance[id-1];
+			    if (lbmap[id+1]==lb) gradx += 0.5f*distance[id+1];
+			    if (lbmap[id-1]==lb) gradx -= 0.5f*distance[id-1];
 			    float grady = 0.0f;
-			    if (labels[id+nx]==lb) grady += 0.5f*distance[id+nx];
-			    if (labels[id-nx]==lb) grady -= 0.5f*distance[id-nx];
+			    if (lbmap[id+nx]==lb) grady += 0.5f*distance[id+nx];
+			    if (lbmap[id-nx]==lb) grady -= 0.5f*distance[id-nx];
 			    float gradxy = 0.0f;
-			    if (labels[id+1+nx]==lb) gradxy += 0.5f*distance[id+1+nx];
-			    if (labels[id-1-nx]==lb) gradxy -= 0.5f*distance[id-1-nx];
+			    if (lbmap[id+1+nx]==lb) gradxy += 0.5f*distance[id+1+nx];
+			    if (lbmap[id-1-nx]==lb) gradxy -= 0.5f*distance[id-1-nx];
 			    float gradyx = 0.0f;
-			    if (labels[id+1-nx]==lb) gradyx += 0.5f*distance[id+1-nx];
-			    if (labels[id-1+nx]==lb) gradyx -= 0.5f*distance[id-1+nx];
+			    if (lbmap[id+1-nx]==lb) gradyx += 0.5f*distance[id+1-nx];
+			    if (lbmap[id-1+nx]==lb) gradyx -= 0.5f*distance[id-1+nx];
 			    
 			    // remove everything with high gradient, see what's left?
 			    if (Numerics.max(gradx*gradx,grady*grady,gradxy*gradxy,gradyx*gradyx)<=0.25f) keep[id] = true;
@@ -1420,7 +1427,7 @@ public class LinearFiberMapping {
 			    radius[id] = distance[id];
 			    for (byte k = 0; k<4; k++) {
 			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny);
-			        if (labels[ngb]==labels[id] && !keep[ngb]) {
+			        if (lbmap[ngb]==lbmap[id] && !keep[ngb]) {
                         heap.addValue(Numerics.abs(distance[ngb]-distance[id]), ngb, id);
                     }
                 }
@@ -1443,7 +1450,7 @@ public class LinearFiberMapping {
 			    // find new neighbors
 			    for (byte k = 0; k<4; k++) {
 			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny);
-			        if (labels[ngb]==labels[id] && !keep[ngb]) {
+			        if (lbmap[ngb]==lbmap[id] && !keep[ngb]) {
                         heap.addValue(dist+Numerics.abs(distance[ngb]-distance[id]), ngb, id);
                     }
 				}
