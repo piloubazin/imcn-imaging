@@ -517,7 +517,7 @@ public class LinearFiberMapping {
             }
 		}
 		for (int xy=0;xy<nx*ny;xy++) {
-		    propag[xy[ = proba[xy];
+		    propag[xy] = proba[xy];
 		}
 		if (estimateDiameter) {
 		    // only look at points that are kept!
