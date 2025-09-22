@@ -1308,7 +1308,7 @@ public class LinearFiberMapping {
         
         //probaImage = proba;
         
-		
+		/*
 		// correct for background stuff, based i=on initial values? easier to do taht beforehand?
 		float[] pavg = new float[nx*ny];
 		float[] psum = new float[nx*ny];
@@ -1323,7 +1323,7 @@ public class LinearFiberMapping {
 		        pvmap[id] = 0.0f;
 		        labels[id] = 0;
 		    }
-		}
+		}*/
 
 		// Diameter from skeleton
 		float[] nbdist = new float[4];
