@@ -516,6 +516,9 @@ public class LinearFiberMapping {
                 }
             }
 		}
+		for (int xy=0;xy<nx*ny;xy++) {
+		    propag[xy[ = proba[xy];
+		}
 		if (estimateDiameter) {
 		    // only look at points that are kept!
 		    //boolean[] obj = ObjectExtraction.objectFromImage(proba, nx,ny,1, 0.0f, ObjectExtraction.SUPERIOR);
