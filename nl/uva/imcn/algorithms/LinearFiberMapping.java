@@ -521,8 +521,8 @@ public class LinearFiberMapping {
 		    //boolean[] obj = ObjectExtraction.objectFromImage(proba, nx,ny,1, 0.0f, ObjectExtraction.SUPERIOR);
 		
 		    //estimateDiameter(inputImage, obj, maxscale, maxdirection, mask);    
-		    probaImage = propag;
-		    growPartialVolume(inputImage, lines, mask, detectionThreshold);
+		    //probaImage = propag;
+		    growPartialVolume(inputImage, lines, proba, mask, detectionThreshold);
 		}
 		
 		if (extend) {
@@ -1232,7 +1232,7 @@ public class LinearFiberMapping {
         return;       
     }
     
-    private final void growPartialVolume(float[] image, int[] labels, boolean[] mask, float threshold) {
+    private final void growPartialVolume(float[] image, int[] labels, float[] proba, boolean[] mask, float threshold) {
         
         
 		// mean,stdev inside each vessel
@@ -1262,13 +1262,14 @@ public class LinearFiberMapping {
         // simply order them by size instead?
 		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
 			int id = x + nx*y;
-			if (labels[id]>0) {
-			    for (byte k = 0; k<4; k++) {
+			if (labels[id]>0 && proba[id]>=threshold) {
+			    int lb = labels[id];
+                float pb = proba[id];
+                for (byte k = 0; k<4; k++) {
 			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny);
 			        if (mask[ngb] && labels[ngb]==0) {
-                        int lb = labels[id];
                         float pv = (float)FastMath.exp(-0.5*(image[ngb]-avg[lb])*(image[ngb]-avg[lb])/var[lb]);
-                        if (pv>=0.5f) heap.addValue(pv, ngb, lb);
+                        if (pv>=0.5f) heap.addValue(pv*pb, ngb, id);
                     }
                 }
             }
@@ -1279,46 +1280,46 @@ public class LinearFiberMapping {
             pvmap[id] = 1.0f;
         }
         while (heap.isNotEmpty()) {
-            float pv = heap.getFirst();
-            int id = heap.getFirstId1();
-            int lb = heap.getFirstId2();
+            //float pv = heap.getFirst();
+            int cur = heap.getFirstId1();
+            int id = heap.getFirstId2();
+            
+            int lb = labels[id];
+            float pb = proba[id];
+            float pv = (float)FastMath.exp(-0.5*(image[cur]-avg[lb])*(image[cur]-avg[lb])/var[lb]);
             
             heap.removeFirst();
-            
-            if (pvmap[id]==0) {
+                        
+            if (pvmap[cur]==0) {
                 // add to current pv
-                pvmap[id] = pv;
-                labels[id] = lb;
+                pvmap[cur] = pv;
+                //labels[cur] = lb;
+                //proba[cur] = pb;
                 
                 for (byte k = 0; k<4; k++) {
 			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny);
 			        if (mask[ngb] && labels[ngb]==0) {
                         float newpv = (float)FastMath.exp(-0.5*(image[ngb]-avg[lb])*(image[ngb]-avg[lb])/var[lb]);
-                        if (newpv>=0.5f) heap.addValue(newpv, ngb, lb);
+                        if (newpv>=0.5f) heap.addValue(newpv*pb, ngb, id);
                     }
                 }
             }
         }
+        
+        //probaImage = proba;
+        
 		
-		//debug: compute average probability instead
+		// correct for background stuff, based i=on initial values? easier to do taht beforehand?
 		float[] pavg = new float[nx*ny];
 		float[] psum = new float[nx*ny];
 		for (int id=0;id<nx*ny;id++) if (labels[id]>0) {
 		    int lb = labels[id];
-		    pavg[lb] += probaImage[id];
+		    pavg[lb] += proba[id];
 		    psum[lb] ++;
 		}
 		for (int id=0;id<nx*ny;id++) if (labels[id]>0) {
-		    int lb = labels[id];
-		    if (psum[lb]>0) {
-                probaImage[id] = pavg[lb]/psum[lb];
-            }
-        }
-		
-		// correct for background stuff, based on model of 2D vessel as a line
-		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
-			int id = x + nx*y;
-		    if (probaImage[id]<2.0f*threshold/3.0f) {
+			int lb = labels[id];
+		    if (pavg[lb]<threshold*psum[lb]) {
 		        pvmap[id] = 0.0f;
 		        labels[id] = 0;
 		    }
