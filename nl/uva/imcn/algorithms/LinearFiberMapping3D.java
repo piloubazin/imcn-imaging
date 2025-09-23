@@ -471,8 +471,10 @@ public class LinearFiberMapping3D {
                     
                     // compute average probability score for the entire line
                     float meanp = 0.0f;
+                    float maxp = 0.0f;
                     for (int n=0;n<nl;n++) {
                         meanp += propag[lx[n]+nx*ly[n]+nx*ny*lz[n]]/nl;
+                        if (propag[lx[n]+nx*ly[n]+nx*ny*lz[n]]>maxp) maxp = propag[lx[n]+nx*ly[n]+nx*ny*lz[n]];
                     }
                     
                     // Add line to detected ones
@@ -485,7 +487,8 @@ public class LinearFiberMapping3D {
                         theta[xyz+nx*ny*nz*Z] = (float)lvz;
                         length[xyz] = lengthL;
                         ani[xyz] = 1.0f-thickL/lengthL;
-                        proba[xyz] = meanp;
+                        if (maxProba) proba[xyz] = maxp;
+                        else proba[xyz] = meanp;
                     }
                 } else {
                     // remove single point detections (artefacts)
@@ -493,13 +496,16 @@ public class LinearFiberMapping3D {
                 }
             }
 		}
+		for (int xy=0;xy<nx*ny;xy++) {
+		    propag[xy] = proba[xy];
+		}
 		if (estimateDiameter) {
 		    // only look at points that are keptlines
 		    //boolean[] obj = ObjectExtraction.objectFromImage(proba, nx,ny,nz, 0.0f, ObjectExtraction.SUPERIOR);
 		
 		    //estimateDiameter(inputImage, obj, maxscale, maxdirection, mask);    
 		    probaImage = propag;
-		    growPartialVolume(inputImage, lines, mask, detectionThreshold);
+		    growPartialVolume(inputImage, lines, proba, mask, detectionThreshold);
 		}
 		
 		if (extend) {
@@ -550,7 +556,7 @@ public class LinearFiberMapping3D {
         }
 		// Output
 		BasicInfo.displayMessage("...output inputImages\n");
-		probaImage = proba;
+		probaImage = propag;
 		lineImage = lines;
 		thetaImage = theta;
 		aniImage = ani;
@@ -2295,7 +2301,7 @@ public class LinearFiberMapping3D {
         return;       
     }
     
-   private final void growPartialVolume(float[] image, int[] labels, boolean[] mask, float threshold) {
+   private final void growPartialVolume(float[] image, int[] labels, float[] proba, boolean[] mask, float threshold) {
         
         
 		// mean,stdev inside each vessel
@@ -2325,13 +2331,14 @@ public class LinearFiberMapping3D {
         // simply order them by size instead?
 		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
 			int id = x + nx*y + nx*ny*z;
-			if (labels[id]>0) {
+			if (labels[id]>0 && proba[id]>=threshold) {
+			    int lb = labels[id];
+			    float pb = proba[id];
 			    for (byte k = 0; k<6; k++) {
 			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny, nz);
 			        if (mask[ngb] && labels[ngb]==0) {
-                        int lb = labels[id];
                         float pv = (float)FastMath.exp(-0.5*(image[ngb]-avg[lb])*(image[ngb]-avg[lb])/var[lb]);
-                        if (pv>=0.5f) heap.addValue(pv, ngb, lb);
+                        if (pv>=0.5f) heap.addValue(pv*pb, ngb, id);
                     }
                 }
             }
@@ -2341,50 +2348,50 @@ public class LinearFiberMapping3D {
         for (int id=0;id<nx*ny*nz;id++) if (labels[id]>0) {
             pvmap[id] = 1.0f;
         }
+        int[] lbmap = new int[nx*ny*nz];
+        for (int id=0;id<nx*ny*nz;id++) {
+            lbmap[id] = labels[id];
+        }
         while (heap.isNotEmpty()) {
-            float pv = heap.getFirst();
-            int id = heap.getFirstId1();
-            int lb = heap.getFirstId2();
+            //float pv = heap.getFirst();
+            int cur = heap.getFirstId1();
+            int id = heap.getFirstId2();
+            
+            int lb = labels[id];
+            float pb = proba[id];
+            float pv = (float)FastMath.exp(-0.5*(image[cur]-avg[lb])*(image[cur]-avg[lb])/var[lb]);
             
             heap.removeFirst();
             
-            if (pvmap[id]==0) {
+            if (pvmap[cur]==0) {
                 // add to current pv
-                pvmap[id] = pv;
-                labels[id] = lb;
+                pvmap[cur] = pv;
+                lbmap[cur] = lb;
                 
                 for (byte k = 0; k<6; k++) {
 			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny, nz);
 			        //if (mask[ngb] && labels[ngb]==0) {
-                    if (mask[ngb] && pvmap[ngb]==0) {
+                    if (mask[ngb] && lbmap[ngb]==0) {
                         float newpv = (float)FastMath.exp(-0.5*(image[ngb]-avg[lb])*(image[ngb]-avg[lb])/var[lb]);
-                        if (newpv>=0.5f) heap.addValue(newpv, ngb, lb);
+                        if (newpv>=0.5f) heap.addValue(newpv*pb, ngb, id);
                     }
                 }
             }
         }
 		
-		//debug: compute average probability instead
+		// correct for background stuff, based on simplistic model of 3D vessel as a line
 		float[] pavg = new float[nx*ny*nz];
 		float[] psum = new float[nx*ny*nz];
-		for (int id=0;id<nx*ny*nz;id++) if (labels[id]>0) {
-		    int lb = labels[id];
-		    pavg[lb] += probaImage[id];
+		for (int id=0;id<nx*ny*nz;id++) if (lbmap[id]>0) {
+		    int lb = lbmap[id];
+		    pavg[lb] += proba[id];
 		    psum[lb] ++;
 		}
-		for (int id=0;id<nx*ny*nz;id++) if (labels[id]>0) {
-		    int lb = labels[id];
-		    if (psum[lb]>0) {
-                probaImage[id] = pavg[lb]/psum[lb];
-            }
-        }
-        
-        // correct for background stuff, based on simplistic model of 3D vessel as a line
-		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
-			int id = x + nx*y + nx*ny*z;
-		    if (probaImage[id]<5.0f*threshold/9.0f) {
+		for (int id=0;id<nx*ny*nz;id++) if (lbmap[id]>0) {
+		    int lb = lbmap[id];
+		    if (pavg[lb]<1.0f/9.0f*threshold*psum[lb]) {
 		        pvmap[id] = 0.0f;
-		        labels[id] = 0;
+		        lbmap[id] = 0;
 		    }
 		}
 		
@@ -2399,15 +2406,15 @@ public class LinearFiberMapping3D {
 		float[] distance = new float[nx*ny*nz];
 		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
 			int id = x + nx*y + nx*ny*z;
-			if (labels[id]>0) {
+			if (lbmap[id]>0) {
 			    boolean boundary=false;
 			    for (byte k = 0; k<6 && !boundary; k++) {
 			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny, nz);
-			        if (labels[ngb]==0) {
+			        if (lbmap[ngb]==0) {
                         boundary=true;
                     }
                 }
-                if (boundary) heap.addValue(pvmap[id], id, labels[id]);
+                if (boundary) heap.addValue(pvmap[id], id, lbmap[id]);
             }
         }
 
@@ -2428,14 +2435,14 @@ public class LinearFiberMapping3D {
 			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny, nz);
 				
 			        // must be in outside the object or its processed neighborhood
-			        if (labels[ngb]==lb && distance[ngb]==0) {
+			        if (lbmap[ngb]==lb && distance[ngb]==0) {
 			            // compute new distance based on processed neighbors for the same object
 			            for (byte l=0; l<6; l++) {
 			                nbdist[l] = -1.0f;
 			                nbflag[l] = false;
 			                int ngb2 = fastMarchingNeighborIndex(l, ngb, nx, ny, nz);
 			                // note that there is at most one value used here
-			                if (labels[ngb2]==lb && distance[ngb2]>0) {
+			                if (lbmap[ngb2]==lb && distance[ngb2]>0) {
 			                    nbdist[l] = distance[ngb2];
 			                    nbflag[l] = true;
 			                }			
@@ -2454,34 +2461,34 @@ public class LinearFiberMapping3D {
 		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
 			int id = x + nx*y + nx*ny*z;
 			if (distance[id]>0) {
-			    int lb = labels[id];
+			    int lb = lbmap[id];
 			    float gradx = 0.0f;
-			    if (labels[id+1]==lb) gradx += 0.5f*distance[id+1];
-			    if (labels[id-1]==lb) gradx -= 0.5f*distance[id-1];
+			    if (lbmap[id+1]==lb) gradx += 0.5f*distance[id+1];
+			    if (lbmap[id-1]==lb) gradx -= 0.5f*distance[id-1];
 			    float grady = 0.0f;
-			    if (labels[id+nx]==lb) grady += 0.5f*distance[id+nx];
-			    if (labels[id-nx]==lb) grady -= 0.5f*distance[id-nx];
+			    if (lbmap[id+nx]==lb) grady += 0.5f*distance[id+nx];
+			    if (lbmap[id-nx]==lb) grady -= 0.5f*distance[id-nx];
 			    float gradz = 0.0f;
-			    if (labels[id+nx*ny]==lb) gradz += 0.5f*distance[id+nx*ny];
-			    if (labels[id-nx*ny]==lb) gradz -= 0.5f*distance[id-nx*ny];
+			    if (lbmap[id+nx*ny]==lb) gradz += 0.5f*distance[id+nx*ny];
+			    if (lbmap[id-nx*ny]==lb) gradz -= 0.5f*distance[id-nx*ny];
 			    float gradxy = 0.0f;
-			    if (labels[id+1+nx]==lb) gradxy += 0.5f*distance[id+1+nx];
-			    if (labels[id-1-nx]==lb) gradxy -= 0.5f*distance[id-1-nx];
+			    if (lbmap[id+1+nx]==lb) gradxy += 0.5f*distance[id+1+nx];
+			    if (lbmap[id-1-nx]==lb) gradxy -= 0.5f*distance[id-1-nx];
 			    float gradyz = 0.0f;
-			    if (labels[id+nx+nx*ny]==lb) gradyz += 0.5f*distance[id+nx+nx*ny];
-			    if (labels[id-nx-nx*ny]==lb) gradyz -= 0.5f*distance[id-nx-nx*ny];
+			    if (lbmap[id+nx+nx*ny]==lb) gradyz += 0.5f*distance[id+nx+nx*ny];
+			    if (lbmap[id-nx-nx*ny]==lb) gradyz -= 0.5f*distance[id-nx-nx*ny];
 			    float gradzx = 0.0f;
-			    if (labels[id+nx*ny+1]==lb) gradzx += 0.5f*distance[id+nx*ny+1];
-			    if (labels[id-nx*ny-1]==lb) gradzx -= 0.5f*distance[id-nx*ny-1];
+			    if (lbmap[id+nx*ny+1]==lb) gradzx += 0.5f*distance[id+nx*ny+1];
+			    if (lbmap[id-nx*ny-1]==lb) gradzx -= 0.5f*distance[id-nx*ny-1];
 			    float gradyx = 0.0f;
-			    if (labels[id+1-nx]==lb) gradyx += 0.5f*distance[id+1-nx];
-			    if (labels[id-1+nx]==lb) gradyx -= 0.5f*distance[id-1+nx];
+			    if (lbmap[id+1-nx]==lb) gradyx += 0.5f*distance[id+1-nx];
+			    if (lbmap[id-1+nx]==lb) gradyx -= 0.5f*distance[id-1+nx];
 			    float gradzy = 0.0f;
-			    if (labels[id+nx-nx*ny]==lb) gradzy += 0.5f*distance[id+nx-nx*ny];
-			    if (labels[id-nx+nx*ny]==lb) gradzy -= 0.5f*distance[id-nx+nx*ny];
+			    if (lbmap[id+nx-nx*ny]==lb) gradzy += 0.5f*distance[id+nx-nx*ny];
+			    if (lbmap[id-nx+nx*ny]==lb) gradzy -= 0.5f*distance[id-nx+nx*ny];
 			    float gradxz = 0.0f;
-			    if (labels[id+nx*ny-1]==lb) gradxz += 0.5f*distance[id+nx*ny-1];
-			    if (labels[id-nx*ny+1]==lb) gradxz -= 0.5f*distance[id-nx*ny+1];
+			    if (lbmap[id+nx*ny-1]==lb) gradxz += 0.5f*distance[id+nx*ny-1];
+			    if (lbmap[id-nx*ny+1]==lb) gradxz -= 0.5f*distance[id-nx*ny+1];
 			    
 			    // remove everything with high gradient, see what's left?
 			    if (Numerics.max(gradx*gradx,grady*grady,gradxy*gradxy,gradyz*gradyz,gradzx*gradzx,gradyx*gradyx,gradzy*gradzy,gradxz*gradxz)<=0.25f) keep[id] = true;
@@ -2495,7 +2502,7 @@ public class LinearFiberMapping3D {
 			    radius[id] = distance[id];
 			    for (byte k = 0; k<6; k++) {
 			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny, nz);
-			        if (labels[ngb]==labels[id] && !keep[ngb]) {
+			        if (lbmap[ngb]==lbmap[id] && !keep[ngb]) {
                         heap.addValue(Numerics.abs(distance[ngb]-distance[id]), ngb, id);
                     }
                 }
@@ -2518,7 +2525,7 @@ public class LinearFiberMapping3D {
 			    // find new neighbors
 			    for (byte k = 0; k<6; k++) {
 			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny, nz);
-			        if (labels[ngb]==labels[id] && !keep[ngb]) {
+			        if (lbmap[ngb]==lbmap[id] && !keep[ngb]) {
                         heap.addValue(dist+Numerics.abs(distance[ngb]-distance[id]), ngb, id);
                     }
 				}

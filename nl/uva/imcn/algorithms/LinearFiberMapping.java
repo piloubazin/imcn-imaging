@@ -1239,7 +1239,7 @@ public class LinearFiberMapping {
                 
                 for (byte k = 0; k<4; k++) {
 			        int ngb = fastMarchingNeighborIndex(k, id, nx, ny);
-			        if (mask[ngb] && labels[ngb]==0) {
+			        if (mask[ngb] && lbmap[ngb]==0) {
                         float newpv = (float)FastMath.exp(-0.5*(image[ngb]-avg[lb])*(image[ngb]-avg[lb])/var[lb]);
                         if (newpv>=0.5f) heap.addValue(newpv*pb, ngb, id);
                     }
@@ -1331,7 +1331,7 @@ public class LinearFiberMapping {
 		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) {
 			int id = x + nx*y;
 			if (distance[id]>0) {
-			    int lb = labels[id];
+			    int lb = lbmap[id];
 			    float gradx = 0.0f;
 			    if (lbmap[id+1]==lb) gradx += 0.5f*distance[id+1];
 			    if (lbmap[id-1]==lb) gradx -= 0.5f*distance[id-1];
