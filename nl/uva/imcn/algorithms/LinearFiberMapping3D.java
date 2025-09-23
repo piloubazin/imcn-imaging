@@ -32,7 +32,7 @@ public class LinearFiberMapping3D {
 	
 	private int minscaleParam = 0;
 	private int maxscaleParam = 3;
-	private boolean relativeContrast = false;
+	private boolean maxProba = false;
 	
 	private boolean maskBg = true;
 	
@@ -115,7 +115,7 @@ public class LinearFiberMapping3D {
 	public final void setMinimumScale(int val) { minscaleParam = val; }
 	public final void setMaximumScale(int val) { maxscaleParam = val; }
 
-	public final void setRelativeContrast(boolean val) { relativeContrast = val; }
+	public final void setUseMaxProba(boolean val) { maxProba = val; }
 	
 	public final void setDiffusionFactor(float val) { difffactorParam = val; }
 	public final void setSimilarityScale(float val) { simscaleParam = val; }

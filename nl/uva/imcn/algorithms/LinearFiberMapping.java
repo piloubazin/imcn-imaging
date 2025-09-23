@@ -33,7 +33,7 @@ public class LinearFiberMapping {
 	
 	private int minscaleParam = 0;
 	private int maxscaleParam = 3;
-	private boolean relativeContrast = false;
+	private boolean maxProba = false;
 	
 	private float difffactorParam = 1.0f;
 	private float simscaleParam = 0.1f;
@@ -96,7 +96,7 @@ public class LinearFiberMapping {
 	public final void setMinimumScale(int val) { minscaleParam = val; }
 	public final void setMaximumScale(int val) { maxscaleParam = val; }
 	
-	public final void setRelativeContrast(boolean val) { relativeContrast = val; }
+	public final void setUseMaxProba(boolean val) { maxProba = val; }
 
 	public final void setDiffusionFactor(float val) { difffactorParam = val; }
 	public final void setSimilarityScale(float val) { simscaleParam = val; }
@@ -510,8 +510,8 @@ public class LinearFiberMapping {
                         theta[lx[n]+nx*ly[n]] = (float)(thetaL*180.0/FastMath.PI);
                         length[lx[n]+nx*ly[n]] = lengthL;
                         ani[lx[n]+nx*ly[n]] = aniL;
-                        //proba[lx[n]+nx*ly[n]] = meanp;
-                        proba[lx[n]+nx*ly[n]] = maxp;
+                        if (maxProba) proba[lx[n]+nx*ly[n]] = maxp;
+                        else proba[lx[n]+nx*ly[n]] = meanp;
                     }
                 } else {
                     // remove single point detections (artefacts)
@@ -596,8 +596,7 @@ public class LinearFiberMapping {
 				filter[xyz] = 0.0f;
 				if (mask[xyz] && !zeroNeighbor(img, mask, x,y,z,2)) {
 					// check for zero-valued neighbors as well
-					if (relativeContrast) minmaxlineRelativeScore(inputImage, linescore, linedir, x,y,z, NC);
-					else minmaxlineScore(inputImage, linescore, linedir, x,y,z, NC);
+					minmaxlineScore(inputImage, linescore, linedir, x,y,z, NC);
 					filter[xyz] = linescore[x][y][z];
 					direction[xyz] = linedir[x][y][z];
 					if (filter[xyz]<0) if (unidirectional) { filter[xyz]=0; direction[xyz] = -1; } else filter[xyz]*=-1.0f;
@@ -714,75 +713,6 @@ public class LinearFiberMapping {
 				maxgrad = val1*val1+val2*val2;
 				if (val1*val1<val2*val2) minval = val1;
 				else minval = val2;
-				sign = val1*val2;
-				direction = d;
-			}
-		}
-		if (sign>0) {
-			line[x][y][z] = minval;
-			dir[x][y][z] = direction;
-		} else {
-			line[x][y][z] = 0.0f;
-			dir[x][y][z] = -1;
-		}
-		return;
-		
-	}
-	
-	void minmaxlineRelativeScore(float[][][] inputImage, float[][][] line, byte[][][] dir, int x, int y, int z, int dmax) {
-		float maxgrad = 0.0f; 
-		float minval = 0.0f; 
-		float sign = 0.0f;
-		byte direction = -1;
-		for (byte d=0;d<dmax;d++) {
-			float val1 = 0.0f, val2 = 0.0f, val0=1.0f;
-			if (d==X) {		
-				val1=(inputImage[x][y][z]		-inputImage[x-1][y][z]
-					 +inputImage[x][y-1][z]		-inputImage[x-1][y-1][z]
-					 +inputImage[x][y+1][z]		-inputImage[x-1][y+1][z])/3.0f;
-				val2=(inputImage[x][y][z]		-inputImage[x+1][y][z]
-					 +inputImage[x][y-1][z]		-inputImage[x+1][y-1][z]
-					 +inputImage[x][y+1][z]		-inputImage[x+1][y+1][z])/3.0f;
-				val0=(inputImage[x][y][z]		+inputImage[x-1][y][z]    +inputImage[x+1][y][z]
-					 +inputImage[x][y-1][z]		+inputImage[x-1][y-1][z]  +inputImage[x+1][y-1][z]
-					 +inputImage[x][y+1][z]		+inputImage[x-1][y+1][z]  +inputImage[x+1][y+1][z])/9.0f;
-			} else if (d==Y) {
-				val1=(inputImage[x][y][z]		-inputImage[x][y-1][z]
-					 +inputImage[x-1][y][z]		-inputImage[x-1][y-1][z]
-					 +inputImage[x+1][y][z]		-inputImage[x+1][y-1][z])/3.0f;
-				val2=(inputImage[x][y][z]		-inputImage[x][y+1][z]
-					 +inputImage[x-1][y][z]		-inputImage[x-1][y+1][z]
-					 +inputImage[x+1][y][z]		-inputImage[x+1][y+1][z])/3.0f;
-				val0=(inputImage[x][y][z]		+inputImage[x][y-1][z]    +inputImage[x][y+1][z]
-					 +inputImage[x-1][y][z]		+inputImage[x-1][y-1][z]  +inputImage[x-1][y+1][z]
-					 +inputImage[x+1][y][z]		+inputImage[x+1][y-1][z]  +inputImage[x+1][y+1][z])/9.0f;
-			} else if (d==XpY) { 			
-				val1=(inputImage[x][y][z]		-inputImage[x-1][y-1][z]
-					 +inputImage[x-1][y+1][z]	-inputImage[x-2][y][z]
-					 +inputImage[x+1][y-1][z]	-inputImage[x][y-2][z])/3.0f;
-				val2=(inputImage[x][y][z]		-inputImage[x+1][y+1][z]
-					 +inputImage[x-1][y+1][z]	-inputImage[x][y+2][z]
-					 +inputImage[x+1][y-1][z]	-inputImage[x+2][y][z])/3.0f;
-				val0=(inputImage[x][y][z]		+inputImage[x-1][y-1][z]  +inputImage[x+1][y+1][z]
-					 +inputImage[x-1][y+1][z]	+inputImage[x-2][y][z]    +inputImage[x][y+2][z]  
-					 +inputImage[x+1][y-1][z]	+inputImage[x][y-2][z]    +inputImage[x+2][y][z])/9.0f;
-			} else if (d==XmY) { 			
-				val1=(inputImage[x][y][z]		-inputImage[x-1][y+1][z]
-					 +inputImage[x-1][y-1][z]	-inputImage[x-2][y][z]
-					 +inputImage[x+1][y+1][z]	-inputImage[x][y-2][z])/3.0f;
-				val2=(inputImage[x][y][z]		-inputImage[x+1][y-1][z]
-					 +inputImage[x-1][y-1][z]	-inputImage[x][y-2][z]
-					 +inputImage[x+1][y+1][z]	-inputImage[x+2][y][z])/3.0f;
-				val0=(inputImage[x][y][z]		+inputImage[x-1][y+1][z]  +inputImage[x+1][y-1][z]
-					 +inputImage[x-1][y-1][z]	+inputImage[x-2][y][z]    +inputImage[x][y-2][z]
-					 +inputImage[x+1][y+1][z]	+inputImage[x][y-2][z]    +inputImage[x+2][y][z])/9.0f;
-				
-			}
-			// find the strongest gradient direction, then estimate the corresponding filter response
-			if ((val1*val1+val2*val2)/(val0*val0)>maxgrad) {
-				maxgrad = (val1*val1+val2*val2)/(val0*val0);
-				if (val1*val1<val2*val2) minval = val1/val0;
-				else minval = val2/val0;
 				sign = val1*val2;
 				direction = d;
 			}
