@@ -1271,7 +1271,7 @@ public class ConditionalShapeSegmentationFaster {
             // use the max of boundary-based and groupwise variances, to avoid variance shrinkage
             for (int sub=0;sub<nsub;sub++) {
                 double varsub = Numerics.square(FastMath.log(Numerics.max(1.0,vols[sub]+0.5*bnds[sub]))-FastMath.log(Numerics.max(1.0,vols[sub]-0.5*bnds[sub])));
-                logVolStdv[obj] = Numerics.max(logVolStd[obj],varsub)
+                logVolStdv[obj] = Numerics.max(logVolStd[obj],varsub);
             }
             logVolStdv[obj] = (float)FastMath.sqrt(logVolStdv[obj]);
             System.out.println(obj+" : "+FastMath.exp(logVolMean[obj])
