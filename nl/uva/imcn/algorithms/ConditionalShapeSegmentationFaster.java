@@ -1247,17 +1247,31 @@ public class ConditionalShapeSegmentationFaster {
         logVolStdv = new float[nobj];
         for (int obj=0;obj<nobj;obj++) {
             float[] vols = new float[nsub];
+            float[] bnds = new float[nsub];
             for (int sub=0;sub<nsub;sub++) {
                 vols[sub] = 0.0f;
+                bnds[sub] = 0.0f;
                 for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
                     if (levelsets[sub][obj][xyz]<0) {
                         vols[sub]+=rx*ry*rz;
+                        // check if boundary
+                        for (int i=-1;i<=1;i++) for (int j=-1;j<=1;j++) for (int l=-1;l<=1;l++) {
+                            if (levelsets[sub][obj][xyz+i+j*nx+l*nx*ny]>=0) {
+                                bnds[sub]+=rx*ry*rz;
+                                i=2; j=2; l=2;
+                            }
+                        }
                     }
                 }
                 logVolMean[obj] += FastMath.log(Numerics.max(1.0,vols[sub]))/nsub;
             }
             for (int sub=0;sub<nsub;sub++) {
                 logVolStdv[obj] += Numerics.square(FastMath.log(Numerics.max(1.0,vols[sub]))-logVolMean[obj])/(nsub-1.0f);
+            }
+            // use the max of boundary-based and groupwise variances, to avoid variance shrinkage
+            for (int sub=0;sub<nsub;sub++) {
+                double varsub = Numerics.square(FastMath.log(Numerics.max(1.0,vols[sub]+0.5*bnds[sub]))-FastMath.log(Numerics.max(1.0,vols[sub]-0.5*bnds[sub])));
+                logVolStdv[obj] = Numerics.max(logVolStd[obj],varsub)
             }
             logVolStdv[obj] = (float)FastMath.sqrt(logVolStdv[obj]);
             System.out.println(obj+" : "+FastMath.exp(logVolMean[obj])
