@@ -1255,12 +1255,17 @@ public class ConditionalShapeSegmentationFaster {
                     if (levelsets[sub][obj][xyz]<0) {
                         vols[sub]+=rx*ry*rz;
                         // check if boundary
-                        for (int i=-1;i<=1;i++) for (int j=-1;j<=1;j++) for (int l=-1;l<=1;l++) {
-                            if (levelsets[sub][obj][xyz+i+j*nx+l*nx*ny]>=0) {
-                                bnds[sub]+=rx*ry*rz;
-                                i=2; j=2; l=2;
-                            }
+                        if (  levelsets[sub][obj][xyz+1]>=0 || levelsets[sub][obj][xyz-1]>=0
+                           || levelsets[sub][obj][xyz+nx]>=0 || levelsets[sub][obj][xyz-nx]>=0
+                           || levelsets[sub][obj][xyz+nx*ny]>=0 || levelsets[sub][obj][xyz-nx*ny]>=0 ) {
+                            bnds[sub]+=rx*ry*rz;
                         }
+                        //for (int i=-1;i<=1;i++) for (int j=-1;j<=1;j++) for (int l=-1;l<=1;l++) {
+                        //    if (levelsets[sub][obj][xyz+i+j*nx+l*nx*ny]>=0) {
+                        //        bnds[sub]+=rx*ry*rz;
+                        //        i=2; j=2; l=2;
+                        //    }
+                        //}
                     }
                 }
                 logVolMean[obj] += FastMath.log(Numerics.max(1.0,vols[sub]))/nsub;
@@ -1269,10 +1274,15 @@ public class ConditionalShapeSegmentationFaster {
                 logVolStdv[obj] += Numerics.square(FastMath.log(Numerics.max(1.0,vols[sub]))-logVolMean[obj])/(nsub-1.0f);
             }
             // use the max of boundary-based and groupwise variances, to avoid variance shrinkage
+            double varsub = 0.0;
             for (int sub=0;sub<nsub;sub++) {
-                double varsub = Numerics.square(FastMath.log(Numerics.max(1.0,vols[sub]+0.5*bnds[sub]))-FastMath.log(Numerics.max(1.0,vols[sub]-0.5*bnds[sub])));
-                logVolStdv[obj] = (float)Numerics.max(logVolStdv[obj],varsub);
+                varsub += 0.5*Numerics.square(FastMath.log(Numerics.max(1.0,vols[sub]+0.5*bnds[sub]))-logVolMean[obj])/(nsub-1.0)
+                         +0.5*Numerics.square(FastMath.log(Numerics.max(1.0,vols[sub]-0.5*bnds[sub]))-logVolMean[obj])/(nsub-1.0);
             }
+            // replace the classical variance  by this one, which is always slightly bigger (accounting for partial volume uncertainty)
+            //logVolStdv[obj] = (float)Numerics.max(logVolStdv[obj],varsub);
+            logVolStdv[obj] = (float)varsub;
+            
             logVolStdv[obj] = (float)FastMath.sqrt(logVolStdv[obj]);
             System.out.println(obj+" : "+FastMath.exp(logVolMean[obj])
                                    +" ["+FastMath.exp(logVolMean[obj]-logVolStdv[obj])
