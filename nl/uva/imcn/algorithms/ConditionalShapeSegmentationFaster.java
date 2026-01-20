@@ -3280,7 +3280,7 @@ public class ConditionalShapeSegmentationFaster {
         }
         for (int obj0=nbg;obj0<nobj;obj0++) {
             for (int obj=nbg;obj<nobj;obj++) {
-				if (bestvol[ordering[obj]]<bestvol[ordering[obj0]]) {
+				if (bestvol[ordering[obj]]>bestvol[ordering[obj0]]) {
 					// switch place
 					int tmp = ordering[obj0];
 					ordering[obj0] = ordering[obj];
