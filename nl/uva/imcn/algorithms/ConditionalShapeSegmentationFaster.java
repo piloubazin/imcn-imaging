@@ -466,6 +466,14 @@ public class ConditionalShapeSegmentationFaster {
                 }
             }
         }
+        // clean-up random labels: anything below 0.01 is excluded
+        for (int xyz=0;xyz<naxyz;xyz++) if (mask[xyz]) {
+            for (int best=0;best<nskel;best++) if (skeletonProbas[best][idmap[xyz]]<0.01f) {
+                skeletonProbas[best][idmap[xyz]] = 0.0f;
+                skeletonLabels[best][idmap[xyz]] = 0;
+            }
+        }
+        
 	}
 	public final void setConditionalMeanAndStdv(float[] mean, float[] stdv) {
 	    condmean = new double[nc][nobj][nobj];
@@ -1899,8 +1907,8 @@ public class ConditionalShapeSegmentationFaster {
             }
             // use the skeleton as prior?
             for (int best=0;best<nskel;best++) {
-                int obj = Numerics.floor(skeletonLabels[best][idmap[xyz]]/101.0)-1;
-                if (skeletonProbas[best][idmap[xyz]]>posteriors[obj][obj]*posteriors[obj][obj])
+                int obj = Numerics.floor(skeletonLabels[best][idmap[xyz]]/101.0)-1;                
+                if (obj>=0 && skeletonProbas[best][idmap[xyz]]>posteriors[obj][obj]*posteriors[obj][obj])
                     posteriors[obj][obj] = FastMath.sqrt(skeletonProbas[best][idmap[xyz]]);
             }
             // intensity posterior
