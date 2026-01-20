@@ -3054,7 +3054,7 @@ public class ConditionalShapeSegmentationFaster {
             bestvol[obj] = FastMath.exp(logVolMean[obj]);
         }
         System.out.println("\nOptimized volumes: ");
-        for (int obj=nbg;obj<nobj;obj++) System.out.println(obj+": "+bestvol[obj]);
+        for (int obj=nbg;obj<nobj;obj++) System.out.println(obj+": "+bestvol[obj]+" (starting score: "+bestscore[obj]+")");
         // re-run one last time to get the segmentation
         heap.reset();
         for (int obj=0;obj<nobj;obj++) {
