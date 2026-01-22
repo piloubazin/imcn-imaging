@@ -3088,7 +3088,8 @@ public class ConditionalShapeSegmentationFaster {
                                 //score *= (1.0f+offset);
                                 if (k>=18) if (score>0) score *= ISQRT3; else score /= ISQRT3;
                                 else if (k>=6) if (score>0) score *= ISQRT2; else score /= ISQRT2;
-                                score = score/bestscore[obj];
+                                //score = score/bestscore[obj];
+                                score = score/bestvol[obj];
                                 heap.addValue(score,ngb,combinedLabels[best][idmap[ngb]]);
                                 best=nbest;
                             }
@@ -3132,7 +3133,8 @@ public class ConditionalShapeSegmentationFaster {
                                             else if (k>=6) if (newscore>0) newscore *= ISQRT2; else newscore /= ISQRT2;
                                             // weight by relative size, so smaller structures are prioritized? not useful
                                             //newscore *= (1.0f-vol[obj]/bestvol[obj]);
-                                            newscore = newscore/bestscore[obj];
+                                            //newscore = newscore/bestscore[obj];
+                                            newscore = newscore/bestvol[obj];
                                             heap.addValue(newscore,ngb,combinedLabels[best][idmap[ngb]]);
                                             best=nbest;
                                         }
