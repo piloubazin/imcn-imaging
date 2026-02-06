@@ -18,6 +18,7 @@ public class StackIntensityRegularisation {
 	
 	float cutoff = 50.0f;
 	float rmax = 95.0f;
+	int mem=1;
 	
 	float[] regularised;
 	
@@ -28,6 +29,7 @@ public class StackIntensityRegularisation {
 	public final void setVariationRatio(float val) { cutoff = val; }
 	public final void setIntensityRatio(float val) { rmax = val; }
 	//public final void setMaxDifference(float val) { cutoff = val; }
+	public final void setMemory(int val) { mem = val; }
 	
 	public final void setDimensions(int x, int y, int z) { nx=x; ny=y; nz=z; nxyz=nx*ny*nz; }
 	public final void setDimensions(int[] dim) { nx=dim[0]; ny=dim[1]; nz=dim[2]; nxyz=nx*ny*nz; }
@@ -79,7 +81,7 @@ public class StackIntensityRegularisation {
         }
 	    
 	    // per slice:
-	    double[] differences = new double [2*nx*ny];
+	    double[] differences = new double [mem*nx*ny];
 	    int ndiff = 0;
 	    double minbias = 0;
 	    double maxbias = 0;
@@ -103,11 +105,13 @@ public class StackIntensityRegularisation {
 	                differences[ndiff] = image[xyz]-image[ngb1];
 	                ndiff++;
 	            }
-	            if (z>mid+1) {
-                    int ngb2 = xyz-2*nx*ny;
-                    if (mask[xyz] && mask[ngb2]) {
-                        differences[ndiff] = image[xyz]-image[ngb2];
-                        ndiff++;
+	            for (int m=1;m<mem;m++) {
+                    if (z>mid+m) {
+                        int ngb2 = xyz-(m+1)*nx*ny;
+                        if (mask[xyz] && mask[ngb2]) {
+                            differences[ndiff] = image[xyz]-image[ngb2];
+                            ndiff++;
+                        }
                     }
                 }
 	        }
@@ -137,17 +141,19 @@ public class StackIntensityRegularisation {
                         }
                         ndiff++;
                     }
-                    if (z>mid+1) {
-                        int ngb2 = xyz-2*nx*ny;
-                        if (mask[xyz] && mask[ngb2]) {
-                            if (differences[ndiff]>=min && differences[ndiff]<=max) {
-                            //if (differences[ndiff]<=max) {
-                                curr[nkept] = image[xyz];
-                                prev[nkept] = image[ngb2];
-                                mean += image[xyz];
-                                nkept++;
+                    for (int m=1;m<mem;m++) {
+                        if (z>mid+m) {
+                            int ngb2 = xyz-(m+1)*nx*ny;
+                            if (mask[xyz] && mask[ngb2]) {
+                                if (differences[ndiff]>=min && differences[ndiff]<=max) {
+                                //if (differences[ndiff]<=max) {
+                                    curr[nkept] = image[xyz];
+                                    prev[nkept] = image[ngb2];
+                                    mean += image[xyz];
+                                    nkept++;
+                                }
+                                ndiff++;
                             }
-                            ndiff++;
                         }
                     }
                 }
@@ -188,18 +194,20 @@ public class StackIntensityRegularisation {
                                 }
                                 ndiff++;
                             }
-                            if (z>mid+1) {
-                                int ngb2 = xyz-2*nx*ny;
-                                double expected2 = val.get(0,0) + image[ngb2]*val.get(1,0);
-                                if (mask[ngb2]) { 
-                                    if (differences[ndiff]>=min && differences[ndiff]<=max) {
-                                    //if (differences[ndiff]<=max) {
-                                        // compute residuals only where relevant
-                                        variance += (image[xyz]-mean)*(image[xyz]-mean);
-                                        residual += (image[xyz]-expected2)*(image[xyz]-expected2);
-                                        nkept++;
+                            for (int m=1;m<mem;m++) {
+                                if (z>mid+m) {
+                                    int ngb2 = xyz-(m+1)*nx*ny;
+                                    double expected2 = val.get(0,0) + image[ngb2]*val.get(1,0);
+                                    if (mask[ngb2]) { 
+                                        if (differences[ndiff]>=min && differences[ndiff]<=max) {
+                                        //if (differences[ndiff]<=max) {
+                                            // compute residuals only where relevant
+                                            variance += (image[xyz]-mean)*(image[xyz]-mean);
+                                            residual += (image[xyz]-expected2)*(image[xyz]-expected2);
+                                            nkept++;
+                                        }
+                                        ndiff++;
                                     }
-                                    ndiff++;
                                 }
                             }
                             // change values
@@ -236,11 +244,13 @@ public class StackIntensityRegularisation {
 	                differences[ndiff] = image[xyz]-image[ngb1];
 	                ndiff++;
 	            }
-	            if (z<mid-1) {
-                    int ngb2 = xyz+2*nx*ny;
-                    if (mask[xyz] && mask[ngb2]) {
-                        differences[ndiff] = image[xyz]-image[ngb2];
-                        ndiff++;
+	            for (int m=1;m<mem;m++) {
+                    if (z<mid-m) {
+                        int ngb2 = xyz+(m+1)*nx*ny;
+                        if (mask[xyz] && mask[ngb2]) {
+                            differences[ndiff] = image[xyz]-image[ngb2];
+                            ndiff++;
+                        }
                     }
                 }
 	        }
@@ -270,17 +280,19 @@ public class StackIntensityRegularisation {
                         }
                         ndiff++;
                     }
-                    if (z<mid-1) {
-                        int ngb2 = xyz+2*nx*ny;
-                        if (mask[xyz] && mask[ngb2]) {
-                            if (differences[ndiff]>=min && differences[ndiff]<=max) {
-                            //if (differences[ndiff]<=max) {
-                                curr[nkept] = image[xyz];
-                                prev[nkept] = image[ngb2];
-                                mean += image[xyz];
-                                nkept++;
+                    for (int m=1;m<mem;m++) {
+                        if (z<mid-m) {
+                            int ngb2 = xyz+(m+1)*nx*ny;
+                            if (mask[xyz] && mask[ngb2]) {
+                                if (differences[ndiff]>=min && differences[ndiff]<=max) {
+                                //if (differences[ndiff]<=max) {
+                                    curr[nkept] = image[xyz];
+                                    prev[nkept] = image[ngb2];
+                                    mean += image[xyz];
+                                    nkept++;
+                                }
+                                ndiff++;
                             }
-                            ndiff++;
                         }
                     }
                 }
@@ -321,18 +333,20 @@ public class StackIntensityRegularisation {
                                 }
                                 ndiff++;
                             }
-                            if (z<mid-1) {
-                                int ngb2 = xyz+2*nx*ny;
-                                double expected2 = val.get(0,0) + image[ngb2]*val.get(1,0);
-                                if (mask[ngb2]) { 
-                                    if (differences[ndiff]>=min && differences[ndiff]<=max) {
-                                    //if (differences[ndiff]<=max) {
-                                        // compute residuals only where relevant
-                                        variance += (image[xyz]-mean)*(image[xyz]-mean);
-                                        residual += (image[xyz]-expected2)*(image[xyz]-expected2);
-                                        nkept++;
+                            for (int m=1;m<mem;m++) {
+                                if (z<mid-m) {
+                                    int ngb2 = xyz+(m+1)*nx*ny;
+                                    double expected2 = val.get(0,0) + image[ngb2]*val.get(1,0);
+                                    if (mask[ngb2]) { 
+                                        if (differences[ndiff]>=min && differences[ndiff]<=max) {
+                                        //if (differences[ndiff]<=max) {
+                                            // compute residuals only where relevant
+                                            variance += (image[xyz]-mean)*(image[xyz]-mean);
+                                            residual += (image[xyz]-expected2)*(image[xyz]-expected2);
+                                            nkept++;
+                                        }
+                                        ndiff++;
                                     }
-                                    ndiff++;
                                 }
                             }
                             // change values
