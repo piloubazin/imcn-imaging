@@ -7,7 +7,7 @@ import nl.uva.imcn.methods.*;
 
 import org.apache.commons.math3.util.FastMath;
 import org.apache.commons.math3.stat.descriptive.rank.*;
-
+import org.apache.commons.math3.special.Erf;
 //import Jama.*;
 
 /*
@@ -79,6 +79,7 @@ public class ConditionalShapeSegmentationFaster {
 	private final float INF = 1e9f;
 	private final float ISQRT2 = (float)(1.0/FastMath.sqrt(2.0));
 	private final float ISQRT3 = (float)(1.0/FastMath.sqrt(2.0));
+	private final float SQRT2 = (float)(FastMath.sqrt(2.0));
 	
 	private final int connectivity = 26;
 	
@@ -2921,6 +2922,242 @@ public class ConditionalShapeSegmentationFaster {
                                             else if (k>=6) if (newscore>0) newscore *= ISQRT2; else newscore /= ISQRT2;
                                             // weight by relative size, so smaller structures are prioritized? not useful
                                             //newscore *= (1.0f-vol[obj]/bestvol[obj]);
+                                            heap.addValue(newscore,ngb,combinedLabels[best][idmap[ngb]]);
+                                            best=nbest;
+                                        }
+
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // final segmentation: collapse onto result images
+        finalLabel = new int[nxyz];
+        finalProba = new float[nxyz];
+        float[] kept = new float[nobj];
+        for (int x=1;x<ntx-1;x++) for (int y=1;y<nty-1;y++) for (int z=1;z<ntz-1;z++) {
+            int xyz = x+ntx*y+ntx*nty*z;
+            if (mask[xyz]) {
+                int obj = labels[idmap[xyz]];
+                if (obj==0) {
+                    // check for all background classes
+                    for (int best=0;best<nbest;best++) {
+                        if (combinedLabels[best][idmap[xyz]]>100 && combinedLabels[best][idmap[xyz]]<100*(nbg+1)) {
+                            finalProba[xyz] = Numerics.max(finalProba[xyz],combinedProbas[best][idmap[xyz]]);
+                            best=nbest;
+                        }
+                    }
+                } else {
+                    for (int best=0;best<nbest;best++) {
+                        if (combinedLabels[best][idmap[xyz]]>100*(obj+1) && combinedLabels[best][idmap[xyz]]<100*(obj+2)) {
+                            finalProba[xyz] = Numerics.max(finalProba[xyz],combinedProbas[best][idmap[xyz]]);
+                            best=nbest;
+                        }
+                    }
+                }
+                finalLabel[xyz] = obj;
+            }
+        }
+        return;            
+	}
+
+	public void conditionalPriorVolumeGrowth(float spread) {
+	    // main idea: region growing from inside, until within volume prior
+	    // and a big enough difference in "certainty" score?
+	    
+	    // here we use the volume CDF as a weight to enhance regions that are smaller
+	    // than expected from the volume prior and reduce regions that are getting bigger
+	    
+		// find appropriate threshold to have correct volume; should use a fast marching approach!
+		BinaryHeapPair	heap = new BinaryHeapPair(nx*ny+ny*nz+nz*nx, BinaryHeapPair.MAXTREE);
+		int[] labels = new int[ndata];
+        int[] start = new int[nobj];
+        double[] vol = new double[nobj];
+        float[] bestscore = new float[nobj];
+		for (int obj=nbg;obj<nobj;obj++) bestscore[obj] = -INF;
+		int[][] nextbest = new int[nobj][ndata];
+		heap.reset();
+		
+		// first, find where then next objects probability is in the stack
+		for (int obj=nbg;obj<nobj;obj++) {
+		    for (int n=0;n<ndata;n++) {
+		        nextbest[obj][n] = 0;
+		        if (combinedLabels[0][n]>100*(obj+1) && combinedLabels[0][n]<100*(obj+2)) {
+		            // find the highest proba for a different structure
+                    for (int b=1;b<nbest;b++) {
+                        if (combinedLabels[b][n]<100*(obj+1) || combinedLabels[b][n]>100*(obj+2)) {
+                            nextbest[obj][n] = b;
+                            b = nbest;
+                        }
+                    }
+                } else {
+                    // find the highest proba for current structure
+                    for (int b=1;b<nbest;b++) {
+                        if (combinedLabels[b][n]>100*(obj+1) || combinedLabels[b][n]<100*(obj+2)) {
+                            nextbest[obj][n] = -b;
+                            b = nbest;
+                        }
+                    }
+                }
+            }
+        }
+		// important: skip first labels as background (allows for unbounded growth)
+        for (int obj=nbg;obj<nobj;obj++) {
+		    // find highest scoring voxel as starting point
+           for (int s=0;s<nskel;s++) {
+           //for (int b=0;b<nbest;b++) {
+               for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
+                    int xyz=x+nx*y+nx*ny*z;
+                    if (mask[xyz]) {
+                        int id = idmap[xyz];
+                        if (skeletonLabels[s][id]==101*(obj+1)) {
+                            // use a combination of skeleton prior and combined spatial and intensity for starting point (to test!)
+                            for (int b=0;b<nbest;b++) {
+                                if (combinedLabels[b][id]>100*(obj+1) && combinedLabels[b][id]<100*(obj+2)) {
+                                    float score = skeletonProbas[s][id]*combinedProbas[b][id];
+                                    if (score>bestscore[obj]) {
+                                        bestscore[obj] = score;
+                                        start[obj] = xyz;
+                                        //System.out.println("("+obj+":"+x+","+y+","+z+"="+score+")");
+                                    }
+                                }
+                            }
+                            
+                        //if (spatialLabels[b][id]>100*(obj+1) && spatialLabels[b][id]<100*(obj+2)) {
+                        //if (combinedLabels[b][id]>100*(obj+1) && combinedLabels[b][id]<100*(obj+2)) {
+                        //if (combinedLabels[b][idmap[xyz]]==101*(obj+1)) {
+                            /*
+                            float score = skeletonProbas[s][id];
+                            //float score = spatialProbas[b][id];
+                            //if (b==0) score = combinedProbas[0][id]-combinedProbas[nextbest[obj][id]][id];
+                            //else score = combinedProbas[b][id]-combinedProbas[0][id];
+                            if (score>bestscore[obj]) {
+                                bestscore[obj] = score;
+                                start[obj] = xyz;
+                                //System.out.println("("+obj+":"+x+","+y+","+z+"="+score+")");
+                            }*/
+                        }
+                    }
+                }
+                if (bestscore[obj]>-INF) s = nskel;
+                //if (bestscore[obj]>-INF) b = nbest;
+            }
+            if (start[obj]==0) System.out.println("\n!! Missing structure: "+obj);    
+            // hardcode the starting points?
+        }
+                
+        float[] prev = new float[nobj];
+        // no need to compute volumwe targets, just use the priors (could also use posteriors, to check)
+        /*
+        double[] bestvol = new double[nobj];
+        for (int obj=0;obj<nobj;obj++) {
+            bestvol[obj] = FastMath.exp(logVolMean[obj]);
+        }
+        System.out.println("\nOptimized volumes: ");
+        for (int obj=nbg;obj<nobj;obj++) System.out.println(obj+": "+bestvol[obj]);
+        System.out.print("Label "+obj+": atlas volume = "+FastMath.exp(logVolMean[obj])+" ["+FastMath.exp(logVolMean[obj]-spread*logVolStdv[obj])+", "+FastMath.exp(logVolMean[obj]+spread*logVolStdv[obj])+"]");
+        */
+        
+        // re-run one last time to get the segmentation
+        heap.reset();
+        for (int obj=0;obj<nobj;obj++) {
+            vol[obj] = 0.0;
+        }
+        for(int id=0;id<ndata;id++) labels[id] = 0;
+        // init all starting points before everything else (avoid writing over them)
+        for (int obj=nbg;obj<nobj;obj++) {
+            // hardcode the starting points?
+            //heap.addValue(bestscore[obj],start[obj],101*(obj+1));
+            vol[obj]+= rx*ry*rz;
+            labels[idmap[start[obj]]] = obj;
+        }
+        // look for neighbors
+        for (int obj=nbg;obj<nobj;obj++) {
+            for (byte k = 0; k<connectivity; k++) {
+                int ngb = Ngb.neighborIndex(k, start[obj], nx, ny, nz);
+                if (ngb>0 && ngb<nxyz && mask[ngb]) {
+                    if (labels[idmap[ngb]]==0) {
+                        for (int best=0;best<nbest;best++) {
+                            if (combinedLabels[best][idmap[ngb]]>100*(obj+1) && combinedLabels[best][idmap[ngb]]<100*(obj+2)) {
+                                float score = combinedProbas[best][idmap[ngb]]-combinedProbas[Numerics.max(0,nextbest[obj][idmap[ngb]])][idmap[ngb]];
+                                float offset = 0.0f;
+                                for (int s=0;s<nskel;s++) {
+                                    if (skeletonLabels[s][idmap[ngb]]==101*(obj+1)) {
+                                        offset = -Numerics.abs(skeletonProbas[s][idmap[ngb]]-skeletonProbas[s][idmap[start[obj]]]);
+                                        s = nskel;
+                                    }
+                                }
+                                score += offset;
+                                //score *= (1.0f+offset);
+                                
+                                if (k>=18) {
+                                    if (score>0) score *= ISQRT3; 
+                                    else score /= ISQRT3;
+                                } else if (k>=6) {
+                                    if (score>0) score *= ISQRT2; 
+                                    else score /= ISQRT2;
+                                }
+                                
+                                // erfc volume cdf
+                                double pvol = Erf.erfc((FastMath.log(vol[obj])-logVolMean[obj])/(SQRT2*logVolStdv[obj]));
+                                System.out.print("Label "+obj+": pvol= "+pvol+"\n");
+                                score *= (float)pvol;
+                                
+                                heap.addValue(score,ngb,combinedLabels[best][idmap[ngb]]);
+                                best=nbest;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        while (heap.isNotEmpty()) {
+            float score = heap.getFirst();
+            int xyz = heap.getFirstId1();
+            int obj1obj2 = heap.getFirstId2();
+            heap.removeFirst();
+            if (labels[idmap[xyz]]==0) {
+                int obj = Numerics.floor(obj1obj2/100)-1;
+                //if (vol[obj]<bestvol[obj]) {
+                if (score>=0) {
+                    // update the values
+                    vol[obj]+=rx*ry*rz;
+                    labels[idmap[xyz]] = obj;
+                
+                    // add neighbors
+                    //for (byte k = 0; k<6; k++) {
+                    for (byte k = 0; k<connectivity; k++) {
+                        int ngb = Ngb.neighborIndex(k, xyz, nx, ny, nz);
+                        if (ngb>0 && ngb<nxyz && idmap[ngb]>-1) {
+                            if (mask[ngb]) {
+                                if (labels[idmap[ngb]]==0) {
+                                    for (int best=0;best<nbest;best++) {
+                                        if (combinedLabels[best][idmap[ngb]]>100*(obj+1) && combinedLabels[best][idmap[ngb]]<100*(obj+2)) {
+                                            float newscore = combinedProbas[best][idmap[ngb]]-combinedProbas[Numerics.max(0,nextbest[obj][idmap[ngb]])][idmap[ngb]];
+                                            float offset = 0.0f;
+                                            for (int s=0;s<nskel;s++) {
+                                                if (skeletonLabels[s][idmap[ngb]]==101*(obj+1)) {
+                                                    offset = -Numerics.abs(skeletonProbas[s][idmap[ngb]]-skeletonProbas[s][idmap[xyz]]);
+                                                    s = nskel;
+                                                }
+                                            }
+                                            newscore += offset;
+                                            //newscore *= (1.0f+offset);
+                                            if (k>=18) {
+                                                if (newscore>0) newscore *= ISQRT3; 
+                                                else newscore /= ISQRT3;
+                                            } else if (k>=6) {
+                                                if (newscore>0) newscore *= ISQRT2; 
+                                                else newscore /= ISQRT2;
+                                            }
+                                            // weight by relative size, so smaller structures are prioritized? not useful
+                                            //newscore *= (1.0f-vol[obj]/bestvol[obj]);
+                                            double pvol = Erf.erfc((FastMath.log(vol[obj])-logVolMean[obj])/(SQRT2*logVolStdv[obj]));
+                                            newscore *= pvol;
+                                            
                                             heap.addValue(newscore,ngb,combinedLabels[best][idmap[ngb]]);
                                             best=nbest;
                                         }
