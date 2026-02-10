@@ -3082,7 +3082,14 @@ public class ConditionalShapeSegmentationFaster {
                     if (labels[idmap[ngb]]==0) {
                         for (int best=0;best<nbest;best++) {
                             if (combinedLabels[best][idmap[ngb]]>100*(obj+1) && combinedLabels[best][idmap[ngb]]<100*(obj+2)) {
-                                float score = combinedProbas[best][idmap[ngb]]-combinedProbas[Numerics.max(0,nextbest[obj][idmap[ngb]])][idmap[ngb]];
+                                // erfc volume cdf
+                                float pvol = (float)Erf.erfc((FastMath.log(vol[obj])-logVolMean[obj])/(SQRT2*logVolStdv[obj]));
+                                System.out.print("Label "+obj+": pvol= "+pvol+"\n");
+                                // do not update the next beest, just the current object?
+                                //float pnxb = 1.0f;
+                                //if (nextbest[obj][idmap[ngb]]>=nbg) pnxb = (float)Erf.erfc((FastMath.log(vol[nextbest[obj][idmap[ngb]]])-logVolMean[nextbest[obj][idmap[ngb]]])/(SQRT2*logVolStdv[nextbest[obj][idmap[ngb]]]));
+                                
+                                float score = pvol*combinedProbas[best][idmap[ngb]]-combinedProbas[Numerics.max(0,nextbest[obj][idmap[ngb]])][idmap[ngb]];
                                 float offset = 0.0f;
                                 for (int s=0;s<nskel;s++) {
                                     if (skeletonLabels[s][idmap[ngb]]==101*(obj+1)) {
@@ -3101,11 +3108,6 @@ public class ConditionalShapeSegmentationFaster {
                                     else score /= ISQRT2;
                                 }
                                 
-                                // erfc volume cdf
-                                double pvol = Erf.erfc((FastMath.log(vol[obj])-logVolMean[obj])/(SQRT2*logVolStdv[obj]));
-                                System.out.print("Label "+obj+": pvol= "+pvol+"\n");
-                                score *= (float)pvol;
-                                
                                 heap.addValue(score,ngb,combinedLabels[best][idmap[ngb]]);
                                 best=nbest;
                             }
@@ -3122,7 +3124,7 @@ public class ConditionalShapeSegmentationFaster {
             if (labels[idmap[xyz]]==0) {
                 int obj = Numerics.floor(obj1obj2/100)-1;
                 //if (vol[obj]<bestvol[obj]) {
-                if (score>=0) {
+                if (score>0) {
                     // update the values
                     vol[obj]+=rx*ry*rz;
                     labels[idmap[xyz]] = obj;
@@ -3136,7 +3138,9 @@ public class ConditionalShapeSegmentationFaster {
                                 if (labels[idmap[ngb]]==0) {
                                     for (int best=0;best<nbest;best++) {
                                         if (combinedLabels[best][idmap[ngb]]>100*(obj+1) && combinedLabels[best][idmap[ngb]]<100*(obj+2)) {
-                                            float newscore = combinedProbas[best][idmap[ngb]]-combinedProbas[Numerics.max(0,nextbest[obj][idmap[ngb]])][idmap[ngb]];
+                                            float pvol = (float)Erf.erfc((FastMath.log(vol[obj])-logVolMean[obj])/(SQRT2*logVolStdv[obj]));
+                                            
+                                            float newscore = pvol*combinedProbas[best][idmap[ngb]]-combinedProbas[Numerics.max(0,nextbest[obj][idmap[ngb]])][idmap[ngb]];
                                             float offset = 0.0f;
                                             for (int s=0;s<nskel;s++) {
                                                 if (skeletonLabels[s][idmap[ngb]]==101*(obj+1)) {
@@ -3155,11 +3159,13 @@ public class ConditionalShapeSegmentationFaster {
                                             }
                                             // weight by relative size, so smaller structures are prioritized? not useful
                                             //newscore *= (1.0f-vol[obj]/bestvol[obj]);
-                                            double pvol = Erf.erfc((FastMath.log(vol[obj])-logVolMean[obj])/(SQRT2*logVolStdv[obj]));
-                                            newscore *= pvol;
+                                            
+                                            // only positive scores added?
+                                            //if (newscore>0) {
                                             
                                             heap.addValue(newscore,ngb,combinedLabels[best][idmap[ngb]]);
                                             best=nbest;
+                                            //}
                                         }
 
                                     }
