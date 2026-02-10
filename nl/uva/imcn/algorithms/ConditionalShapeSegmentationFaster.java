@@ -3161,11 +3161,11 @@ public class ConditionalShapeSegmentationFaster {
                                             //newscore *= (1.0f-vol[obj]/bestvol[obj]);
                                             
                                             // only positive scores added?
-                                            //if (newscore>0) {
+                                            if (newscore>0) {
                                             
-                                            heap.addValue(newscore,ngb,combinedLabels[best][idmap[ngb]]);
-                                            best=nbest;
-                                            //}
+                                                heap.addValue(newscore,ngb,combinedLabels[best][idmap[ngb]]);
+                                                best=nbest;
+                                            }
                                         }
 
                                     }
