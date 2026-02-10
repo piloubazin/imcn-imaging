@@ -3083,7 +3083,7 @@ public class ConditionalShapeSegmentationFaster {
                         for (int best=0;best<nbest;best++) {
                             if (combinedLabels[best][idmap[ngb]]>100*(obj+1) && combinedLabels[best][idmap[ngb]]<100*(obj+2)) {
                                 // erfc volume cdf
-                                float pvol = (float)Erf.erfc((FastMath.log(vol[obj])-logVolMean[obj])/(SQRT2*logVolStdv[obj]));
+                                float pvol = (float)Erf.erfc((FastMath.log(vol[obj]+rx*ry*rz)-logVolMean[obj])/(SQRT2*logVolStdv[obj]));
                                 //System.out.print("Label "+obj+": pvol= "+pvol+"\n");
                                 // do not update the next beest, just the current object?
                                 //float pnxb = 1.0f;
@@ -3099,17 +3099,18 @@ public class ConditionalShapeSegmentationFaster {
                                 }
                                 score += offset;
                                 //score *= (1.0f+offset);
-                                
+                                /* not sure this makes much sense anymore
                                 if (k>=18) {
                                     if (score>0) score *= ISQRT3; 
                                     else score /= ISQRT3;
                                 } else if (k>=6) {
                                     if (score>0) score *= ISQRT2; 
                                     else score /= ISQRT2;
+                                }*/
+                                if (score>0) {
+                                    heap.addValue(score,ngb,combinedLabels[best][idmap[ngb]]);
+                                    best=nbest;
                                 }
-                                
-                                heap.addValue(score,ngb,combinedLabels[best][idmap[ngb]]);
-                                best=nbest;
                             }
                         }
                     }
@@ -3138,7 +3139,7 @@ public class ConditionalShapeSegmentationFaster {
                                 if (labels[idmap[ngb]]==0) {
                                     for (int best=0;best<nbest;best++) {
                                         if (combinedLabels[best][idmap[ngb]]>100*(obj+1) && combinedLabels[best][idmap[ngb]]<100*(obj+2)) {
-                                            float pvol = (float)Erf.erfc((FastMath.log(vol[obj])-logVolMean[obj])/(SQRT2*logVolStdv[obj]));
+                                            float pvol = (float)Erf.erfc((FastMath.log(vol[obj]+rx*ry*rz)-logVolMean[obj])/(SQRT2*logVolStdv[obj]));
                                             
                                             float newscore = pvol*combinedProbas[best][idmap[ngb]]-combinedProbas[Numerics.max(0,nextbest[obj][idmap[ngb]])][idmap[ngb]];
                                             float offset = 0.0f;
@@ -3150,13 +3151,14 @@ public class ConditionalShapeSegmentationFaster {
                                             }
                                             newscore += offset;
                                             //newscore *= (1.0f+offset);
+                                            /*
                                             if (k>=18) {
                                                 if (newscore>0) newscore *= ISQRT3; 
                                                 else newscore /= ISQRT3;
                                             } else if (k>=6) {
                                                 if (newscore>0) newscore *= ISQRT2; 
                                                 else newscore /= ISQRT2;
-                                            }
+                                            }*/
                                             // weight by relative size, so smaller structures are prioritized? not useful
                                             //newscore *= (1.0f-vol[obj]/bestvol[obj]);
                                             
