@@ -3084,7 +3084,7 @@ public class ConditionalShapeSegmentationFaster {
                             if (combinedLabels[best][idmap[ngb]]>100*(obj+1) && combinedLabels[best][idmap[ngb]]<100*(obj+2)) {
                                 // erfc volume cdf
                                 float pvol = (float)Erf.erfc((FastMath.log(vol[obj])-logVolMean[obj])/(SQRT2*logVolStdv[obj]));
-                                System.out.print("Label "+obj+": pvol= "+pvol+"\n");
+                                //System.out.print("Label "+obj+": pvol= "+pvol+"\n");
                                 // do not update the next beest, just the current object?
                                 //float pnxb = 1.0f;
                                 //if (nextbest[obj][idmap[ngb]]>=nbg) pnxb = (float)Erf.erfc((FastMath.log(vol[nextbest[obj][idmap[ngb]]])-logVolMean[nextbest[obj][idmap[ngb]]])/(SQRT2*logVolStdv[nextbest[obj][idmap[ngb]]]));
