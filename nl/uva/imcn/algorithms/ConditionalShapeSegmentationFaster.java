@@ -1277,11 +1277,14 @@ public class ConditionalShapeSegmentationFaster {
                         //}
                     }
                 }
-                logVolMean[obj] += FastMath.log(Numerics.max(1.0,vols[sub]))/nsub;
+                // we explicitly model the volume inside, excluding the inner boundary
+                logVolMean[obj] += FastMath.log(Numerics.max(1.0,vols[sub]-bnds[sub]))/nsub;
             }
+            // the variance here is mostly an estimate of partial volume uncertainty...
             for (int sub=0;sub<nsub;sub++) {
                 logVolStdv[obj] += Numerics.square(FastMath.log(Numerics.max(1.0,vols[sub]))-logVolMean[obj])/(nsub-1.0f);
             }
+            /*
             // use the max of boundary-based and groupwise variances, to avoid variance shrinkage
             double varsub = 0.0;
             for (int sub=0;sub<nsub;sub++) {
@@ -1291,7 +1294,7 @@ public class ConditionalShapeSegmentationFaster {
             // replace the classical variance  by this one, which is always slightly bigger (accounting for partial volume uncertainty)
             //logVolStdv[obj] = (float)Numerics.max(logVolStdv[obj],varsub);
             logVolStdv[obj] = (float)varsub;
-            
+            */
             logVolStdv[obj] = (float)FastMath.sqrt(logVolStdv[obj]);
             System.out.println(obj+" : "+FastMath.exp(logVolMean[obj])
                                    +" ["+FastMath.exp(logVolMean[obj]-logVolStdv[obj])
@@ -3083,7 +3086,7 @@ public class ConditionalShapeSegmentationFaster {
                         for (int best=0;best<nbest;best++) {
                             if (combinedLabels[best][idmap[ngb]]>100*(obj+1) && combinedLabels[best][idmap[ngb]]<100*(obj+2)) {
                                 // erfc volume cdf
-                                float pvol = (float)Erf.erfc((FastMath.log(vol[obj]+rx*ry*rz)-logVolMean[obj])/(SQRT2*logVolStdv[obj]));
+                                float pvol = (float)Erf.erfc((FastMath.log(vol[obj])-logVolMean[obj])/(SQRT2*logVolStdv[obj]));
                                 //System.out.print("Label "+obj+": pvol= "+pvol+"\n");
                                 // do not update the next beest, just the current object?
                                 //float pnxb = 1.0f;
@@ -3139,7 +3142,7 @@ public class ConditionalShapeSegmentationFaster {
                                 if (labels[idmap[ngb]]==0) {
                                     for (int best=0;best<nbest;best++) {
                                         if (combinedLabels[best][idmap[ngb]]>100*(obj+1) && combinedLabels[best][idmap[ngb]]<100*(obj+2)) {
-                                            float pvol = (float)Erf.erfc((FastMath.log(vol[obj]+rx*ry*rz)-logVolMean[obj])/(SQRT2*logVolStdv[obj]));
+                                            float pvol = (float)Erf.erfc((FastMath.log(vol[obj])-logVolMean[obj])/(SQRT2*logVolStdv[obj]));
                                             
                                             float newscore = pvol*combinedProbas[best][idmap[ngb]]-combinedProbas[Numerics.max(0,nextbest[obj][idmap[ngb]])][idmap[ngb]];
                                             float offset = 0.0f;
