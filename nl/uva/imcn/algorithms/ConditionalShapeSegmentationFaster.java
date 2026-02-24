@@ -1814,6 +1814,7 @@ public class ConditionalShapeSegmentationFaster {
         for (int obj=0;obj<nobj;obj++) {
             float[] vols = new float[nsub];
             float[] bnds = new float[nsub];
+            float bndmean = 0.0f;
             for (int sub=0;sub<nsub;sub++) {
                 vols[sub] = 0.0f;
                 bnds[sub] = 0.0f;
@@ -1836,7 +1837,10 @@ public class ConditionalShapeSegmentationFaster {
                 }
                 // we explicitly model the volume inside, excluding half of the inner boundary
                 // (excluding all brings a strong bias for thin structures)
-                logVolMean[obj] += FastMath.log(Numerics.max(1.0,vols[sub]-0.5*bnds[sub]))/nsub;
+                //logVolMean[obj] += FastMath.log(Numerics.max(1.0,vols[sub]-0.5*bnds[sub]))/nsub;
+                logVolMean[obj] += FastMath.log(Numerics.max(1.0,vols[sub]))/nsub;
+                bndmean +=  FastMath.log(Numerics.max(1.0,0.5*bnds[sub]))/nsub;
+
             }
             // the variance here is mostly an estimate of partial volume uncertainty...
             for (int sub=0;sub<nsub;sub++) {
@@ -1854,6 +1858,8 @@ public class ConditionalShapeSegmentationFaster {
             logVolStdv[obj] = (float)varsub;
             */
             logVolStdv[obj] = (float)FastMath.sqrt(logVolStdv[obj]);
+            logVolStdv[obj] = Numerics.max(logVolStdv[obj], bndmean);
+            
             System.out.println(obj+" : "+FastMath.exp(logVolMean[obj])
                                    +" ["+FastMath.exp(logVolMean[obj]-logVolStdv[obj])
                                    +", "+FastMath.exp(logVolMean[obj]+logVolStdv[obj]));
@@ -3685,8 +3691,17 @@ public class ConditionalShapeSegmentationFaster {
             heap.removeFirst();
             if (labels[idmap[xyz]]==0) {
                 int obj = Numerics.floor(obj1obj2/100)-1;
+                // recompute the score?
+                float pvol0 = (float)FastMath.pow(Erf.erfc((FastMath.log(vol[obj])-logVolMean[obj])/(SQRT2*logVolStdv[obj])),volumeImportance);
+                float score0 = 0.0f;                            
+                for (int best=0;best<nbest;best++) {
+                    if (combinedLabels[best][idmap[xyz]]>100*(obj+1) && combinedLabels[best][idmap[xyz]]<100*(obj+2)) {
+                        score0 = pvol0*combinedProbas[best][idmap[xyz]]-combinedProbas[Numerics.max(0,nextbest[obj][idmap[xyz]])][idmap[xyz]];
+                        best=nbest;
+                    }
+                }
                 //if (vol[obj]<bestvol[obj]) {
-                if (score>0) {
+                if (score0>0) {
                     // update the values
                     vol[obj]+=rx*ry*rz;
                     labels[idmap[xyz]] = obj;
