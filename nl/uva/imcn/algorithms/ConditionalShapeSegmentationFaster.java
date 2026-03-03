@@ -3643,14 +3643,20 @@ public class ConditionalShapeSegmentationFaster {
         }
         // look for neighbors
         for (int obj=nbg;obj<nobj;obj++) {
+            // erfc volume cdf
+            double erfc = Erf.erfc((FastMath.log(vol[obj])-logVolMean[obj])/(SQRT2*logVolStdv[obj]));
+            float pvol = 1.0f;
+            if (erfc<1) pvol = (float)FastMath.pow(erfc,volumeImportance);
+            else pvol = 2.0f-(float)FastMath.pow(2.0-erfc,volumeImportance);
+                                            
             for (byte k = 0; k<connectivity; k++) {
                 int ngb = Ngb.neighborIndex(k, start[obj], nx, ny, nz);
                 if (ngb>0 && ngb<nxyz && mask[ngb]) {
                     if (labels[idmap[ngb]]==0) {
                         for (int best=0;best<nbest;best++) {
                             if (combinedLabels[best][idmap[ngb]]>100*(obj+1) && combinedLabels[best][idmap[ngb]]<100*(obj+2)) {
-                                // erfc volume cdf
-                                float pvol = (float)FastMath.pow(Erf.erfc((FastMath.log(vol[obj])-logVolMean[obj])/(SQRT2*logVolStdv[obj])),volumeImportance);
+                                // erfc volume cdf: precomputed
+                                //float pvol = (float)FastMath.pow(Erf.erfc((FastMath.log(vol[obj])-logVolMean[obj])/(SQRT2*logVolStdv[obj])),volumeImportance);
                                 //System.out.print("Label "+obj+": pvol= "+pvol+"\n");
                                 // do not update the next beest, just the current object?
                                 //float pnxb = 1.0f;
@@ -3692,7 +3698,10 @@ public class ConditionalShapeSegmentationFaster {
             if (labels[idmap[xyz]]==0) {
                 int obj = Numerics.floor(obj1obj2/100)-1;
                 // recompute the score?
-                float pvol0 = (float)FastMath.pow(Erf.erfc((FastMath.log(vol[obj])-logVolMean[obj])/(SQRT2*logVolStdv[obj])),volumeImportance);
+                double erfc0 = Erf.erfc((FastMath.log(vol[obj])-logVolMean[obj])/(SQRT2*logVolStdv[obj]));
+                float pvol0 = 1.0f;
+                if (erfc0<1) pvol0 = (float)FastMath.pow(erfc0,volumeImportance);
+                else pvol0 = 2.0f-(float)FastMath.pow(2.0-erfc0,volumeImportance);
                 float score0 = 0.0f;                            
                 for (int best=0;best<nbest;best++) {
                     if (combinedLabels[best][idmap[xyz]]>100*(obj+1) && combinedLabels[best][idmap[xyz]]<100*(obj+2)) {
@@ -3707,6 +3716,11 @@ public class ConditionalShapeSegmentationFaster {
                     labels[idmap[xyz]] = obj;
                 
                     // add neighbors
+                    double erfc = Erf.erfc((FastMath.log(vol[obj])-logVolMean[obj])/(SQRT2*logVolStdv[obj]));
+                    float pvol = 1.0f;
+                    if (erfc<1) pvol = (float)FastMath.pow(erfc,volumeImportance);
+                    else pvol = 2.0f-(float)FastMath.pow(2.0-erfc,volumeImportance);
+                    
                     //for (byte k = 0; k<6; k++) {
                     for (byte k = 0; k<connectivity; k++) {
                         int ngb = Ngb.neighborIndex(k, xyz, nx, ny, nz);
@@ -3715,8 +3729,6 @@ public class ConditionalShapeSegmentationFaster {
                                 if (labels[idmap[ngb]]==0) {
                                     for (int best=0;best<nbest;best++) {
                                         if (combinedLabels[best][idmap[ngb]]>100*(obj+1) && combinedLabels[best][idmap[ngb]]<100*(obj+2)) {
-                                            float pvol = (float)FastMath.pow(Erf.erfc((FastMath.log(vol[obj])-logVolMean[obj])/(SQRT2*logVolStdv[obj])),volumeImportance);
-                                            
                                             float newscore = pvol*combinedProbas[best][idmap[ngb]]-combinedProbas[Numerics.max(0,nextbest[obj][idmap[ngb]])][idmap[ngb]];
                                             float offset = 0.0f;
                                             for (int s=0;s<nskel;s++) {
