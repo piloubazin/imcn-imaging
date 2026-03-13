@@ -448,6 +448,30 @@ public class ImageInterpolation {
 	/**
 	 *	linear interpolation, with value outside the image
 	 */
+	public static float linearClosestInterpolation(float[][] image, float x, float y, int nx, int ny) {
+		float alpha,beta,nalpha,nbeta,val;
+		int x0,y0;
+
+        // if out of boundary, use closest point
+		x0 = Numerics.bounded(Numerics.floor(x),0,nx-2);
+		y0 = Numerics.bounded(Numerics.floor(y),0,ny-2);
+		
+		alpha = Numerics.bounded(x - x0, 0.0f, 1.0f);
+		nalpha = 1.0f - alpha;
+
+		beta = Numerics.bounded(y - y0, 0.0f, 1.0f);
+		nbeta = 1.0f - beta;
+
+		val = nalpha*nbeta*image[x0][y0] 
+			+ alpha*nbeta*image[x0+1][y0]
+			+ nalpha*beta*image[x0][y0+1]
+			+ alpha*beta*image[x0+1][y0+1];
+
+		return val;
+	}
+	/**
+	 *	linear interpolation, with value outside the image
+	 */
 	public static float linearClosestInterpolation(float[] image, float x, float y, float z, int c, int nx, int ny, int nz, int nc) {
 		float alpha,beta,gamma,nalpha,nbeta,ngamma,val;
 		int x0,y0,z0;
