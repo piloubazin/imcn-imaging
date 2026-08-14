@@ -468,7 +468,7 @@ public class ConditionalShapeSegmentationFaster {
             }
         }
         // clean-up random labels: anything below 0.01 is excluded
-        for (int xyz=0;xyz<naxyz;xyz++) if (mask[xyz]) {
+        for (int xyz=0;xyz<ntxyz;xyz++) if (mask[xyz]) {
             for (int best=0;best<nskel;best++) if (skeletonProbas[best][idmap[xyz]]<0.01f) {
                 skeletonProbas[best][idmap[xyz]] = 0.0f;
                 skeletonLabels[best][idmap[xyz]] = 0;

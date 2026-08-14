@@ -129,7 +129,7 @@ public class LinearFiberMapping {
 	public final float[] getDiameterImage() { return diameterImage;}
 	public final float[] getPartialVolumeImage() { return pvImage;}
 
-	public void execute(){
+	public void execute(boolean output_all){
 		BasicInfo.displayMessage("linear fiber mapping:\n");
 		
 		// import the inputImage data into 1D arrays: already done

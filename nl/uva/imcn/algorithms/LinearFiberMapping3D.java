@@ -148,7 +148,7 @@ public class LinearFiberMapping3D {
 	public final float[] getDiameterImage() { return diameterImage;}
 	public final float[] getPartialVolumeImage() { return pvImage;}
 
-	public void execute(){
+	public void execute(boolean output_all){
 		BasicInfo.displayMessage("linear fiber mapping:\n");
 		
 		// import the inputImage data into 1D arrays: already done
@@ -258,12 +258,19 @@ public class LinearFiberMapping3D {
 		// -> grow region as long as it's linear-ish and >0?
 		// => estimate length, orientation and anisotropy in one go?
 		int[] lines = new int[nxyz];
-		float[] theta = new float[3*nxyz];
-		float[] length = new float[nxyz];
-		float[] ani = new float[nxyz];
 		BinaryHeap3D heap = new BinaryHeap3D(nx+ny+nz, BinaryHeap3D.MAXTREE);
 		BinaryHeap3D ordering = new BinaryHeap3D(nx+ny+nz, BinaryHeap3D.MAXTREE);
 
+		float[] theta, length, ani;
+		if (output_all) {
+		    theta = new float[3*nxyz];
+		    length = new float[nxyz];
+		    ani = new float[nxyz];
+		} else {
+		    theta = null;
+		    length = null;
+		    ani = null;
+		}
         // simply order them by size instead?
 		for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
 			int xyz = x + nx*y + nx*ny*z;
@@ -482,11 +489,13 @@ public class LinearFiberMapping3D {
                         int xyz = lx[n]+nx*ly[n]+nx*ny*lz[n];
                         // label with starting location id, so each get a different id
                         lines[xyz] = xM+nx*yM+nx*ny*zM;
-                        theta[xyz+nx*ny*nz*X] = (float)lvx;
-                        theta[xyz+nx*ny*nz*Y] = (float)lvy;
-                        theta[xyz+nx*ny*nz*Z] = (float)lvz;
-                        length[xyz] = lengthL;
-                        ani[xyz] = 1.0f-thickL/lengthL;
+                        if (output_all) {
+                            theta[xyz+nx*ny*nz*X] = (float)lvx;
+                            theta[xyz+nx*ny*nz*Y] = (float)lvy;
+                            theta[xyz+nx*ny*nz*Z] = (float)lvz;
+                            length[xyz] = lengthL;
+                            ani[xyz] = 1.0f-thickL/lengthL;
+                        }
                         if (maxProba) proba[xyz] = maxp;
                         else proba[xyz] = meanp;
                     }
@@ -530,22 +539,26 @@ public class LinearFiberMapping3D {
                         if (extendRatio<=0) {
                             if (mask[ngb] && lines[ngb]==0) {
                                 lines[ngb] = lines[xyz];
-                                theta[ngb+nx*ny*nz*X] = theta[xyz+nx*ny*nz*X];
-                                theta[ngb+nx*ny*nz*Y] = theta[xyz+nx*ny*nz*Y];
-                                theta[ngb+nx*ny*nz*Z] = theta[xyz+nx*ny*nz*Z];
-                                length[ngb] = length[xyz];
-                                ani[ngb] = ani[xyz];
+                                if (output_all) {
+                                    theta[ngb+nx*ny*nz*X] = theta[xyz+nx*ny*nz*X];
+                                    theta[ngb+nx*ny*nz*Y] = theta[xyz+nx*ny*nz*Y];
+                                    theta[ngb+nx*ny*nz*Z] = theta[xyz+nx*ny*nz*Z];
+                                    length[ngb] = length[xyz];
+                                    ani[ngb] = ani[xyz];
+                                }
                                 proba[ngb] = score-1.0f;
                                 ordering.addValue(proba[ngb], x+dx,y+dy,z+dz);
                             }
                         } else {
                             if (mask[ngb] && lines[ngb]==0 && proba[ngb]>extendRatio*score) {
                                 lines[ngb] = lines[xyz];
-                                theta[ngb+nx*ny*nz*X] = theta[xyz+nx*ny*nz*X];
-                                theta[ngb+nx*ny*nz*Y] = theta[xyz+nx*ny*nz*Y];
-                                theta[ngb+nx*ny*nz*Z] = theta[xyz+nx*ny*nz*Z];
-                                length[ngb] = length[xyz];
-                                ani[ngb] = ani[xyz];
+                                if (output_all) {
+                                    theta[ngb+nx*ny*nz*X] = theta[xyz+nx*ny*nz*X];
+                                    theta[ngb+nx*ny*nz*Y] = theta[xyz+nx*ny*nz*Y];
+                                    theta[ngb+nx*ny*nz*Z] = theta[xyz+nx*ny*nz*Z];
+                                    length[ngb] = length[xyz];
+                                    ani[ngb] = ani[xyz];
+                                }
                                 proba[ngb] = extendRatio*score;
                                 ordering.addValue(proba[ngb], x+dx,y+dy,z+dz);
                             }
