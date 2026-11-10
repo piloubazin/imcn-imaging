@@ -129,20 +129,20 @@ public class FuzzyCmeansMulti {
     public final void execute() {		
 		
         // image ranges
-        Imin = INF; 
-        Imax = -INF;
         for (int c=0;c<nc;c++) {
             /*
+            Imin = INF; 
+            Imax = -INF;
             for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz]) {
                 if (images[c][xyz]<Imin[c]) Imin[c] = images[c][xyz];
                 if (images[c][xyz]>Imax[c]) Imax[c] = images[c] [xyz];
             }*/
             // use robust estimates?
-            Imin[c] = ImageStatistics.robustMinimum(images[c], mask, 0.001f, 4, nx, ny, nz);
-            Imax[c] = ImageStatistics.robustMaximum(images[c], mask, 0.001f, 4, nx, ny, nz);
-            Iscale[c] = ImageStatistics.robustMaximum(images[c], mask, 0.25f, 4, nx, ny, nz)
-                        - ImageStatistics.robustMinimum(images[c], mask, 0.25f, 4, nx, ny, nz);
-            if (verbose) System.out.print("Image "+c" range ["+Imin[c]+", "+Imax[c]+"], scale "+Iscale[c]+"\n");
+            Imin[c] = ImageStatistics.robustMinimum(images[c], mask, 0.0001f, 5, nx, ny, nz);
+            Imax[c] = ImageStatistics.robustMaximum(images[c], mask, 0.0001f, 5, nx, ny, nz);
+            Iscale[c] = ImageStatistics.robustMinimum(images[c], mask, 0.25f, 5, nx, ny, nz)
+                        - ImageStatistics.robustMaximum(images[c], mask, 0.25f, 5, nx, ny, nz);
+            if (verbose) System.out.print("Image "+c+" range ["+Imin[c]+", "+Imax[c]+"], scale "+Iscale[c]+"\n");
         }
 		
         // init all the new arrays
@@ -193,7 +193,7 @@ public class FuzzyCmeansMulti {
 		boolean stop = false;
 		if (Niterations >= maxIter) stop = true;
 		while (!stop) {
-			if (verbose) System.out.print("iteration " + Niterations + " (max: " + distance + ") ");
+			if (verbose) System.out.print("iteration " + Niterations + " (max: " + distance + ") \n");
 			
 			// update centroids
 			computeCentroids();
@@ -220,7 +220,7 @@ public class FuzzyCmeansMulti {
 		        }
 		        classification[xyz] = id[best+1];
 		    } else {
-		        classification[xyz] = id[[0];
+		        classification[xyz] = id[0];
 		    }
 		}
 		return;
@@ -652,12 +652,12 @@ public class FuzzyCmeansMulti {
                     if (images[c][xyz]<centroids[c][order[1]-1]) {
                         //intens = 2.0f - (centroids[id[2]-1]-image[xyz])/(centroids[id[2]-1]-centroids[id[1]-1]);
                         intens = 0.0f + Numerics.max(0.001f,(images[c][xyz] - Imin[c])/(centroids[c][order[1]-1]-Imin[c]));
-                    } else if (images[c][xyz]>=centroids[order[clusters]-1]) {
+                    } else if (images[c][xyz]>=centroids[c][order[clusters]-1]) {
                         //intens = clusters-1.0f + (image[xyz]-centroids[id[clusters-1]-1])/(centroids[id[clusters]-1]-centroids[id[clusters-1]-1]);
                         intens = clusters + Numerics.min(0.999f,(images[c][xyz]-centroids[c][order[clusters]-1])/(Imax[c]-centroids[c][order[clusters]-1]));
                     } else {
                         for (int k=0;k<clusters-1;k++) {
-                            if (images[c][xyz]>=centroids[c][order[k+1]-1] && images[c][xyz]<centroids[order[k+2]-1]) {
+                            if (images[c][xyz]>=centroids[c][order[k+1]-1] && images[c][xyz]<centroids[c][order[k+2]-1]) {
                                 intens = (k+1.0f) + (images[c][xyz]-centroids[c][order[k+1]-1])/(centroids[c][order[k+2]-1]-centroids[c][order[k+1]-1]);
                             }
                         }
